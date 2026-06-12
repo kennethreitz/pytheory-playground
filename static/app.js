@@ -625,28 +625,6 @@ async function renderCircle() {
   });
 }
 
-/* ---------- groove lab ---------- */
-
-function grooveParams() {
-  const q = new URLSearchParams({
-    preset: $("groove-preset").value,
-    bpm: $("groove-bpm").value,
-    swing: $("groove-swing").value,
-    repeats: $("groove-repeats").value,
-  });
-  if ($("groove-fill").value !== "none") {
-    q.set("fill", $("groove-fill").value);
-    if ($("groove-fill-every").value) q.set("fill_every", $("groove-fill-every").value);
-  }
-  if ($("groove-numerals").value !== "none") {
-    q.set("numerals", $("groove-numerals").value);
-    q.set("tonic", $("groove-tonic").value);
-    q.set("mode", $("groove-mode").value);
-    if ($("sound").value) q.set("sound", $("sound").value);
-  }
-  return q.toString();
-}
-
 /* ---------- tools panel ---------- */
 
 const FMT_EXT = { lilypond: "ly", abc: "abc", musicxml: "musicxml", tab: "txt" };
@@ -1264,6 +1242,8 @@ function songSpec() {
     swing: parseFloat($("song-swing").value) || 0,
     sound: $("song-sound").value,
     fade_out: $("song-fade").checked,
+    fill: $("song-fill").value === "none" ? null : $("song-fill").value,
+    fill_every: $("song-fill-every").value || null,
     sections,
   };
 }
@@ -1279,6 +1259,7 @@ function addSongRow(sec = {}) {
       <option value="block">block chords</option>
       <option value="strum">strummed</option>
       <option value="arpeggio">arpeggiated</option>
+      <option value="drums">drums only</option>
     </select>
     <button class="s-del mini-play" title="Remove section">&#10005;</button>`;
   const groove = row.querySelector(".s-groove");
@@ -1358,6 +1339,7 @@ async function boot() {
 
   // tab switching (with #hash deep links)
   const showPanel = (name) => {
+    if (name === "groove") name = "song"; // Groove Lab merged into Songwriter
     if (!$(`panel-${name}`)) return;
     document.querySelectorAll("#tabs button").forEach((x) =>
       x.classList.toggle("active", x.dataset.panel === name));
@@ -1434,23 +1416,6 @@ async function boot() {
   });
   $("lab-go").addEventListener("click", refreshLab);
   $("lab-symbol").addEventListener("keydown", (e) => { if (e.key === "Enter") refreshLab(); });
-  fill($("groove-preset"), META.drum_presets, "funk");
-  fill($("groove-fill"), ["none", ...META.drum_fills], "none");
-  fill($("groove-numerals"), ["none", ...Object.keys(META.progressions)], "none");
-  fill($("groove-tonic"), META.roots, "C");
-  $("groove-swing").addEventListener("input", () =>
-    ($("groove-swing-label").textContent = $("groove-swing").value));
-  $("groove-play").addEventListener("click", (e) => {
-    const wasPlaying = audioEl && !audioEl.paused && audioEl._button === e.target;
-    playUrl(`/api/groove/audio?${grooveParams()}`, e.target);
-    if (wasPlaying) return; // playUrl just stopped it
-    $("groove-status").textContent = "rendering…";
-    audioEl.addEventListener("playing", () =>
-      ($("groove-status").textContent = `${$("groove-preset").value} · ${$("groove-bpm").value} bpm`), { once: true });
-    audioEl.addEventListener("pause", () => ($("groove-status").textContent = ""), { once: true });
-  });
-  $("groove-midi").addEventListener("click", () =>
-    window.location.assign(`/api/groove/midi?${grooveParams()}`));
   fill($("tuner-instrument"), ["chromatic", ...META.instruments], "guitar");
   fill($("tuner-tuning"), META.tunings, "standard");
   fill($("tuner-system"), Object.keys(META.systems), "western");
@@ -1550,6 +1515,7 @@ async function boot() {
   // songwriter
   fill($("song-tonic"), META.roots, "C");
   fill($("song-sound"), META.sounds, "electric_piano");
+  fill($("song-fill"), ["none", ...META.drum_fills], "none");
   for (const name of Object.keys(META.progressions)) {
     const o = document.createElement("option");
     o.value = name;

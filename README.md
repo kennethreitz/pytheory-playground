@@ -48,15 +48,12 @@ $ docker run -p 5042:5042 pytheory-playground
   secondary dominants, chord suggestions, named progressions with per-chord
   diagrams, an interactive circle of fifths, a modulation planner with pivot
   chords, audio playback, and MIDI download.
-- **Groove Lab** — one hundred drum patterns from the rhythm engine (bossa
-  nova, dhol chaal, drum and bass, blast beat…) with auto-fills, a swing
-  control, optional chord backing in any key, server-rendered audio, and
-  MIDI export.
 - **Songwriter** — one click sketches a complete arrangement in any key from a
   vibe (pop, rock, jazz, blues, folk, lofi, latin): named sections built on
-  `Score.section()`, a groove and chord style per section (block / strummed /
-  arpeggiated), a root-fifth bass line, and a fade-out — fully editable, then
-  rendered as audio, MIDI, or engraved sheet music.
+  `Score.section()`, one hundred drum grooves with auto-fills, a chord style
+  per section (block / strummed / arpeggiated / drums only), a root-fifth
+  bass line, swing, and a fade-out — fully editable, then rendered as audio,
+  MIDI, or engraved sheet music.
 - **Tools**
   - *Hum it → harmonize it* — record a melody; pytheory transcribes it,
     detects the key, picks a chord for every bar, and plays it back with

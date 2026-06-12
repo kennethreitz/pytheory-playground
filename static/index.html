@@ -36,7 +36,6 @@
       <button data-panel="lab">Chord Lab</button>
       <button data-panel="scales">Scales</button>
       <button data-panel="keys">Keys &amp; Progressions</button>
-      <button data-panel="groove">Groove Lab</button>
       <button data-panel="song">Songwriter</button>
       <button data-panel="tools">Tools</button>
       <label id="sound-wrap" title="Playback sound (pytheory synth presets)">&#9835;
@@ -71,8 +70,8 @@
             chords, borrowed chords, secondary dominants, named progressions, and a modulation
             planner.</li>
           <li><a href="#song" class="goto" data-panel="song">Songwriter</a> — sketch a whole
-            arrangement from a vibe: sections, grooves, bass, and fade-out, rendered as audio,
-            MIDI, or engraved sheet music.</li>
+            arrangement from a vibe: sections, one hundred drum grooves with fills, chord styles,
+            bass, and fade-out, rendered as audio, MIDI, or engraved sheet music.</li>
           <li><a href="#tools" class="goto" data-panel="tools">Tools</a> — identify chords from
             fret positions, analyze progressions, detect keys, transcribe hummed or whistled
             recordings into notation, and convert MIDI to LilyPond (with PDF engraving), ABC,
@@ -388,54 +387,6 @@ tuner.onmessage = (e) => {
       <p class="error" id="key-error"></p>
     </section>
 
-    <!-- ============ Groove Lab ============ -->
-    <section id="panel-groove" class="panel">
-      <div class="controls">
-        <label>Groove
-          <select id="groove-preset"></select>
-        </label>
-        <label>BPM
-          <input type="number" id="groove-bpm" value="100" min="40" max="240" style="width:5rem">
-        </label>
-        <label><span>Swing <span id="groove-swing-label" class="mono-val">0</span></span>
-          <input type="range" id="groove-swing" min="0" max="0.6" step="0.05" value="0">
-        </label>
-        <label>Bars
-          <select id="groove-repeats">
-            <option>1</option><option>2</option><option selected>4</option><option>8</option>
-          </select>
-        </label>
-        <label>Fill
-          <select id="groove-fill"></select>
-        </label>
-        <label>Fill every
-          <select id="groove-fill-every">
-            <option value="">never</option><option value="2">2 bars</option><option value="4" selected>4 bars</option>
-          </select>
-        </label>
-      </div>
-      <div class="controls">
-        <label>Backing progression
-          <select id="groove-numerals"></select>
-        </label>
-        <label>Key
-          <select id="groove-tonic"></select>
-        </label>
-        <label>Mode
-          <select id="groove-mode"><option selected>major</option><option>minor</option></select>
-        </label>
-        <button id="groove-play" class="play">&#9654; Play groove</button>
-        <button id="groove-midi" class="secondary">&#8681; MIDI</button>
-      </div>
-      <div class="card wide">
-        <h3>Groove Lab <small>score.drums(preset, fill=…) · Score(swing=…)</small></h3>
-        <p>One hundred drum patterns from pytheory's rhythm engine — bossa nova to blast
-          beat, dhol chaal to drum&nbsp;and&nbsp;bass — with auto-fills, swing, and an optional
-          chord backing cycled underneath. Rendered to audio server-side, exportable as MIDI.</p>
-        <p class="hint" id="groove-status"></p>
-      </div>
-    </section>
-
     <!-- ============ Songwriter ============ -->
     <section id="panel-song" class="panel">
       <div class="controls">
@@ -464,6 +415,14 @@ tuner.onmessage = (e) => {
           </label>
           <label>Chord sound
             <select id="song-sound"></select>
+          </label>
+          <label>Drum fill
+            <select id="song-fill"></select>
+          </label>
+          <label>Fill every
+            <select id="song-fill-every">
+              <option value="">never</option><option value="2">2 bars</option><option value="4" selected>4 bars</option>
+            </select>
           </label>
           <label class="check"><input type="checkbox" id="song-fade" checked> fade out</label>
         </div>

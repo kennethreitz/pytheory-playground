@@ -886,8 +886,15 @@ def _build_song(spec) -> Score:
 
         score.section(str(sec.get("name", f"section {i + 1}")))
         if groove and groove != "none" and groove in Pattern._PRESETS:
-            score.drums(groove, repeats=len(prog))
+            fill = spec.get("fill") if spec.get("fill") in Pattern._FILLS else None
+            fill_every = int(spec.get("fill_every", 0) or 0) or None
+            score.drums(groove, repeats=len(prog),
+                        fill=fill, fill_every=fill_every if fill else None)
         for ch in prog:
+            if style == "drums":
+                chords.rest(4.0)
+                bass.rest(4.0)
+                continue
             if style == "arpeggio":
                 chords.arpeggio(ch, bars=1, pattern="up-down", octaves=2)
             elif style == "strum":
