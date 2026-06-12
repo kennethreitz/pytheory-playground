@@ -103,6 +103,15 @@ def score_for(items, *, bpm=110, duration=1.0, synth="sine", strum=False,
     return score
 
 
+def _parse_chord(symbol: str) -> Chord:
+    """Parse a chord symbol, falling back to the wider from_symbol grammar
+    (sus4, add9, ... — anything scale.harmonize() can emit)."""
+    try:
+        return Chord.from_name(symbol)
+    except Exception:
+        return Chord.from_symbol(symbol)
+
+
 def _sound(req):
     s = req.params.get("sound", "").strip()
     return s if s in SOUNDS else None
@@ -122,7 +131,10 @@ def error(resp, status, message):
 @api.route("/")
 async def index(req, resp):
     with open(os.path.join("static", "index.html")) as f:
-        resp.html = f.read()
+        html = f.read()
+    # Absolute URLs for the social-card tags, whatever host we're served from.
+    base = f"{req.url.scheme}://{req.url.netloc}"
+    resp.html = html.replace("__BASE__", base)
 
 
 @api.route("/api/meta")
@@ -197,7 +209,7 @@ async def chord_view(req, resp):
         tab = named.tab(fretboard=fretboard)
     except Exception as e:
         return error(resp, 422, f"Couldn't voice {name} on {instrument}: {e}")
-    chord = Chord.from_name(name)
+    chord = _parse_chord(name)
     resp.media = {
         "name": name,
         "instrument": instrument,
@@ -216,7 +228,7 @@ async def chord_audio(req, resp):
     if temperament not in TEMPERAMENTS:
         return error(resp, 400, f"Unknown temperament: {temperament}")
     try:
-        chord = Chord.from_name(name)
+        chord = _parse_chord(name)
     except Exception:
         return error(resp, 404, f"Unknown chord: {name}")
     # Strumming resolves via chord charts (equal-tempered); for non-equal
@@ -248,7 +260,7 @@ async def chord_lab(req, resp):
     """Deep analysis of a chord: voicings, set theory, tension, substitutions."""
     symbol = req.params.get("name", "Cmaj7")
     try:
-        chord = Chord.from_name(symbol)
+        chord = _parse_chord(symbol)
     except Exception as e:
         return error(resp, 404, f"Couldn't parse chord '{symbol}': {e}")
 
@@ -313,8 +325,8 @@ async def chord_lab(req, resp):
 async def chord_voice_leading(req, resp):
     """How each voice moves between two chords (chord.voice_leading)."""
     try:
-        a = Chord.from_name(req.params.get("from", "G7"))
-        b = Chord.from_name(req.params.get("to", "C"))
+        a = _parse_chord(req.params.get("from", "G7"))
+        b = _parse_chord(req.params.get("to", "C"))
     except Exception as e:
         return error(resp, 422, f"Couldn't parse chords: {e}")
     try:
@@ -333,7 +345,7 @@ async def symbols_audio(req, resp):
     if not symbols or len(symbols) > 16:
         return error(resp, 400, "Pass 1-16 chord symbols, e.g. symbols=C,Am,F,G")
     try:
-        chords = [Chord.from_name(s) for s in symbols]
+        chords = [_parse_chord(s) for s in symbols]
     except Exception as e:
         return error(resp, 422, f"Couldn't parse chords: {e}")
     score = score_for(chords, bpm=80, duration=2.0, strum=True, sound=_sound(req))
@@ -395,6 +407,37 @@ async def scale_fretboard(req, resp):
                   "instrument": instrument, "name": name}
 
 
+@api.route("/api/scale/positions")
+async def scale_positions(req, resp):
+    """Scale tone positions on a fretboard (for the graphical fingering view)."""
+    frets = min(int(req.params.get("frets", "12")), 15)
+    try:
+        fretboard = _fretboard_params(req)
+    except KeyError:
+        return error(resp, 400, "Unknown instrument")
+    except ValueError as e:
+        return error(resp, 400, str(e))
+    try:
+        scale, name, _ = _toned_scale(req)
+    except Exception as e:
+        return error(resp, 400, f"Bad scale request: {e}")
+    pcs = {t.midi % 12 for t in scale.tones}
+    root_pc = scale.tones[0].midi % 12
+    strings = []
+    for open_tone in fretboard.tones:  # low string first
+        row = {"open": str(open_tone), "frets": []}
+        for f in range(frets + 1):
+            midi = open_tone.midi + f
+            if midi % 12 in pcs:
+                row["frets"].append({
+                    "fret": f,
+                    "note": Tone.from_midi(midi).name,
+                    "root": midi % 12 == root_pc,
+                })
+        strings.append(row)
+    resp.media = {"name": name, "frets": frets, "strings": strings}
+
+
 @api.route("/api/scale/audio")
 async def scale_audio(req, resp):
     try:
@@ -448,7 +491,7 @@ async def key_explore(req, resp):
     after = req.params.get("after", "").strip()
     if after:
         try:
-            suggestions = [c.symbol for c in key.suggest_next(Chord.from_name(after))]
+            suggestions = [c.symbol for c in key.suggest_next(_parse_chord(after))]
         except Exception:
             pass
     try:
@@ -711,7 +754,7 @@ async def analyze(req, resp):
     if not symbols:
         return error(resp, 400, "Pass chords as a comma-separated list, e.g. C,Am,F,G")
     try:
-        chords = [Chord.from_name(s) for s in symbols]
+        chords = [_parse_chord(s) for s in symbols]
     except Exception as e:
         return error(resp, 422, f"Couldn't parse chords: {e}")
     numerals = analyze_progression(chords, key=key, mode=mode)

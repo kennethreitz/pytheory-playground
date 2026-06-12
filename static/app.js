@@ -247,6 +247,75 @@ async function refreshChord() {
   }
 }
 
+/* ---------- guitar-tab scale fingering (horizontal fretboard SVG) ---------- */
+
+function renderScaleBoard(svg, data) {
+  const n = data.strings.length;
+  const frets = data.frets;
+  const left = 56, right = 16, top = 26, rowH = 27;
+  const W = 920, H = top + n * rowH + 26;
+  svg.innerHTML = "";
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const ns = "http://www.w3.org/2000/svg";
+  const el = (tag, attrs) => {
+    const e = document.createElementNS(ns, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    svg.appendChild(e);
+    return e;
+  };
+  const fw = (W - left - right) / frets;
+  const fx = (f) => left + f * fw;                                  // fret-line x
+  const dx = (f) => (f === 0 ? left - 16 : left + (f - 0.5) * fw);  // dot x
+  const sy = (i) => top + (n - 1 - i) * rowH + rowH / 2;            // low string at bottom
+
+  // fret lines + numbers (nut is heavier)
+  for (let f = 0; f <= frets; f++) {
+    el("line", { x1: fx(f), y1: top, x2: fx(f), y2: top + n * rowH,
+                 class: f === 0 ? "diag-nut-line" : "diag-fret", "stroke-width": f === 0 ? 4 : 1 });
+    if (f > 0) {
+      const t = el("text", { x: fx(f) - fw / 2, y: top - 8, "text-anchor": "middle",
+                             "font-size": 11, class: "diag-label" });
+      t.textContent = f;
+    }
+  }
+  // inlay markers
+  for (const f of [3, 5, 7, 9, 12, 15]) {
+    if (f > frets) break;
+    const y = top + (n * rowH) / 2;
+    el("circle", { cx: fx(f) - fw / 2, cy: y, r: 4, class: "diag-inlay" });
+    if (f === 12) el("circle", { cx: fx(f) - fw / 2, cy: y - rowH, r: 4, class: "diag-inlay" });
+  }
+  // strings + open labels
+  data.strings.forEach((s, i) => {
+    const y = sy(i);
+    el("line", { x1: left, y1: y, x2: W - right, y2: y, class: "diag-string", "stroke-width": 1 });
+    const lbl = el("text", { x: 8, y: y + 4, "font-size": 11, class: "diag-label" });
+    lbl.textContent = s.open;
+  });
+  // scale dots
+  data.strings.forEach((s, i) => {
+    const y = sy(i);
+    for (const pos of s.frets) {
+      el("circle", { cx: dx(pos.fret), cy: y, r: 10,
+                     class: pos.root ? "board-dot root" : "board-dot" });
+      const t = el("text", { x: dx(pos.fret), y: y + 3.5, "text-anchor": "middle",
+                             "font-size": 9, class: "board-note" });
+      t.textContent = pos.note;
+    }
+  });
+}
+
+async function refreshGuitarScale() {
+  const q = `tonic=${encodeURIComponent($("gscale-tonic").value)}&name=${encodeURIComponent($("gscale-name").value)}`
+    + `&instrument=${$("chord-instrument").value}${chordTuning()}`;
+  try {
+    const d = await api(`/api/scale/positions?${q}`);
+    renderScaleBoard($("gscale-board"), d);
+  } catch (e) {
+    $("chord-error").textContent = e.message;
+  }
+}
+
 /* ---------- scales panel ---------- */
 
 const SHARP_OF = { Db: "C#", Eb: "D#", Gb: "F#", Ab: "G#", Bb: "A#" };
@@ -1122,13 +1191,25 @@ async function boot() {
   $("chord-instrument").addEventListener("change", () => {
     syncTuningControls();
     refreshChord();
+    refreshGuitarScale();
   });
   $("chord-tuning").addEventListener("change", () => {
     $("chord-tuning-custom-wrap").classList.toggle("hidden", $("chord-tuning").value !== "custom…");
-    if ($("chord-tuning").value !== "custom…" || $("chord-tuning-custom").value.trim()) refreshChord();
+    if ($("chord-tuning").value !== "custom…" || $("chord-tuning-custom").value.trim()) {
+      refreshChord();
+      refreshGuitarScale();
+    }
   });
-  $("chord-tuning-custom").addEventListener("change", refreshChord);
-  $("chord-capo").addEventListener("change", refreshChord);
+  $("chord-tuning-custom").addEventListener("change", () => { refreshChord(); refreshGuitarScale(); });
+  $("chord-capo").addEventListener("change", () => { refreshChord(); refreshGuitarScale(); });
+  fill($("gscale-tonic"), META.roots, "A");
+  fill($("gscale-name"), META.systems.western.scales.filter((s) => s !== "chromatic"), "minor");
+  ["gscale-tonic", "gscale-name"].forEach((id) =>
+    $(id).addEventListener("change", refreshGuitarScale));
+  $("gscale-play").addEventListener("click", (e) => {
+    const q = `tonic=${encodeURIComponent($("gscale-tonic").value)}&octave=3&name=${encodeURIComponent($("gscale-name").value)}`;
+    playUrl(`/api/scale/audio?${q}${soundQ()}`, e.target);
+  });
   ["scale-tonic", "scale-octave", "scale-name", "scale-instrument"].forEach((id) =>
     $(id).addEventListener("change", refreshScale));
   $("scale-system").addEventListener("change", () => {
@@ -1249,6 +1330,7 @@ async function boot() {
   });
 
   refreshChord();
+  refreshGuitarScale();
   refreshLab();
   refreshScale();
   refreshKey();

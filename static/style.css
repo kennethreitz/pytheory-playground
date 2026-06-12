@@ -171,6 +171,13 @@ pre {
 .diag-label { fill: var(--muted); font-family: var(--mono); }
 svg text { font-family: var(--mono); }
 
+/* horizontal scale fretboard */
+.diag-nut-line { stroke: var(--ink); }
+.diag-inlay { fill: var(--line); }
+.board-dot { fill: var(--ink); }
+.board-dot.root { fill: var(--accent); }
+.board-note { fill: var(--bg); font-weight: bold; }
+
 .fret-nav { display: flex; align-items: center; justify-content: center; gap: 0.6rem; margin: 0.25rem 0; }
 .fret-nav button {
   background: none; color: var(--muted); border: 1px solid var(--line);

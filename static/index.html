@@ -4,6 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PyTheory Playground</title>
+  <meta name="description" content="Music theory for humans — chords, scales, tuner, grooves & notation, computed live by pytheory.">
+
+  <!-- social cards (__BASE__ is filled in by the server) -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="PyTheory Playground">
+  <meta property="og:description" content="Music theory for humans — chords, scales, tuner, grooves & notation, computed live by pytheory.">
+  <meta property="og:url" content="__BASE__/">
+  <meta property="og:image" content="__BASE__/static/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="PyTheory Playground">
+  <meta name="twitter:description" content="Music theory for humans — chords, scales, tuner, grooves & notation, computed live by pytheory.">
+  <meta name="twitter:image" content="__BASE__/static/og.png">
+
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#127928;</text></svg>">
   <link rel="stylesheet" href="/static/style.css">
   <script defer src="https://analytics.kennethreitz.org/script.js" data-website-id="a691eb37-8047-4529-9ea8-64ef1957f564"></script>
@@ -117,6 +132,15 @@
         <div class="card">
           <h3>ASCII tab <small>NamedChord.tab(fretboard=…)</small></h3>
           <pre id="chord-tab"></pre>
+        </div>
+        <div class="card wide">
+          <h3>Scale fingering <small>TonedScale + fretboard, same tuning &amp; capo</small>
+            <select id="gscale-tonic" class="inline"></select>
+            <select id="gscale-name" class="inline"></select>
+            <button id="gscale-play" class="mini-play wide-play">&#9654; hear it</button>
+          </h3>
+          <svg id="gscale-board" width="100%"></svg>
+          <p class="hint">Root notes in red. Follows the instrument, tuning, and capo above.</p>
         </div>
       </div>
       <p class="error" id="chord-error"></p>
