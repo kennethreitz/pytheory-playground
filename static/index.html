@@ -426,11 +426,37 @@ tuner.onmessage = (e) => {
           </label>
           <label class="check"><input type="checkbox" id="song-fade" checked> fade out</label>
         </div>
-        <div class="song-row song-head hint">
-          <span>section</span><span>progression</span><span>groove</span><span>chords</span><span></span>
+        <p id="song-summary" class="tones"></p>
+        <div id="song-timeline"></div>
+        <div id="song-editor" class="hidden">
+          <div class="controls">
+            <label>Section name
+              <input id="se-name" type="text" size="11">
+            </label>
+            <label>Progression
+              <input id="se-prog" type="text" size="16" list="progression-names">
+            </label>
+            <label>Groove
+              <select id="se-groove"></select>
+            </label>
+            <label>Chords
+              <select id="se-style">
+                <option value="block">block chords</option>
+                <option value="strum">strummed</option>
+                <option value="arpeggio">arpeggiated</option>
+                <option value="drums">drums only</option>
+              </select>
+            </label>
+            <button id="se-preview" class="mini-play wide-play">&#9654; preview</button>
+          </div>
+          <div class="controls se-actions">
+            <button id="se-left" class="secondary" title="Move earlier">&larr; move</button>
+            <button id="se-right" class="secondary" title="Move later">move &rarr;</button>
+            <button id="se-dup" class="secondary">&#10697; duplicate</button>
+            <button id="se-del" class="secondary">&#10005; remove</button>
+            <button id="song-add" class="secondary">+ new section</button>
+          </div>
         </div>
-        <div id="song-sections"></div>
-        <button id="song-add" class="secondary" style="margin-top:0.5rem">+ section</button>
         <div class="controls" style="margin-top:1.25rem">
           <button id="song-play" class="play">&#9654; Play song</button>
           <button id="song-midi" class="secondary">&#8681; MIDI</button>

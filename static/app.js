@@ -408,13 +408,17 @@ function renderPiano(container, noteNames) {
 
 let lastHarmonized = [];
 
-// Repopulate tonic + scale selects for the chosen tonal system.
+// Repopulate tonic + scale selects for the chosen tonal system,
+// keeping the current choice when it exists there. Defaults to B minor.
 function syncSystemControls() {
   const sys = META.systems[$("scale-system").value];
-  const tonicDefault = sys.tonics.includes("C") ? "C" : sys.tonics[0];
+  const curTonic = $("scale-tonic").value;
+  const tonicDefault = sys.tonics.includes(curTonic) ? curTonic
+    : sys.tonics.includes("B") ? "B" : sys.tonics[0];
   fill($("scale-tonic"), sys.tonics, tonicDefault);
-  const scaleDefault = sys.scales.includes("major") ? "major"
-    : (sys.scales[1] || sys.scales[0]);
+  const curScale = $("scale-name").value;
+  const scaleDefault = sys.scales.includes(curScale) ? curScale
+    : sys.scales.includes("minor") ? "minor" : (sys.scales[1] || sys.scales[0]);
   fill($("scale-name"), sys.scales, scaleDefault);
 }
 
@@ -1241,45 +1245,91 @@ async function detectKey() {
 
 /* ---------- songwriter ---------- */
 
-function songSpec() {
-  const sections = [...document.querySelectorAll("#song-sections .song-row")].map((row) => ({
-    name: row.querySelector(".s-name").value || "section",
-    numerals: row.querySelector(".s-prog").value || "I-IV-V-I",
-    groove: row.querySelector(".s-groove").value,
-    style: row.querySelector(".s-style").value,
-  }));
+let songSections = [];
+let songSel = -1;
+
+const SECTION_HUES = ["#2f6f6a", "#6a4a7a", "#7a5a2f", "#3d6a8a", "#7a3d4d", "#4a7a3d", "#5a5a7a"];
+
+function sectionBars(sec) {
+  const named = META.progressions[sec.numerals];
+  return named ? named.length : Math.max(1, sec.numerals.split("-").filter(Boolean).length);
+}
+
+function sectionColor(name) {
+  const base = name.replace(/\s*\d+$/, "").trim().toLowerCase();
+  if (!sectionColor._map) sectionColor._map = new Map();
+  if (!sectionColor._map.has(base)) {
+    sectionColor._map.set(base, SECTION_HUES[sectionColor._map.size % SECTION_HUES.length]);
+  }
+  return sectionColor._map.get(base);
+}
+
+function songSummary() {
+  const bars = songSections.reduce((n, s) => n + sectionBars(s), 0);
+  const bpm = parseInt($("song-bpm").value, 10) || 110;
+  const secs = Math.round((bars * 4 * 60) / bpm);
+  $("song-summary").textContent = songSections.length
+    ? `${songSections.length} section${songSections.length === 1 ? "" : "s"} · ${bars} bars · ~${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")} at ${bpm} bpm`
+    : "";
+}
+
+function renderTimeline() {
+  const tl = $("song-timeline");
+  tl.innerHTML = "";
+  sectionColor._map = new Map(); // stable colors per render, by first appearance
+  songSections.forEach((sec, i) => {
+    const block = document.createElement("div");
+    block.className = "song-block" + (i === songSel ? " selected" : "");
+    block.style.flexGrow = sectionBars(sec);
+    block.style.borderColor = sectionColor(sec.name);
+    block.style.background = sectionColor(sec.name) + "33";
+    block.innerHTML = `<div class="sb-name">${sec.name}</div>
+      <div class="sb-meta">${sec.numerals}</div>
+      <div class="sb-meta">${sec.style === "drums" ? "&#129345; drums" : sec.style}${sec.groove !== "none" ? " · " + sec.groove : ""}</div>
+      <div class="sb-bars">${sectionBars(sec)} bars</div>`;
+    block.addEventListener("click", () => selectSection(i));
+    tl.appendChild(block);
+  });
+  songSummary();
+}
+
+function selectSection(i) {
+  songSel = i;
+  const sec = songSections[i];
+  $("song-editor").classList.toggle("hidden", !sec);
+  if (!sec) return renderTimeline();
+  $("se-name").value = sec.name;
+  $("se-prog").value = sec.numerals;
+  $("se-groove").value = sec.groove;
+  $("se-style").value = sec.style;
+  renderTimeline();
+}
+
+function updateSelectedSection() {
+  if (songSel < 0 || !songSections[songSel]) return;
+  Object.assign(songSections[songSel], {
+    name: $("se-name").value || "section",
+    numerals: $("se-prog").value || "I-IV-V-I",
+    groove: $("se-groove").value,
+    style: $("se-style").value,
+  });
+  renderTimeline();
+}
+
+function songSpec(onlySelected = false) {
+  const sections = onlySelected && songSections[songSel]
+    ? [songSections[songSel]] : songSections;
   return {
     tonic: $("song-tonic").value,
     mode: $("song-mode").value,
     bpm: parseInt($("song-bpm").value, 10) || 110,
     swing: parseFloat($("song-swing").value) || 0,
     sound: $("song-sound").value,
-    fade_out: $("song-fade").checked,
+    fade_out: onlySelected ? false : $("song-fade").checked,
     fill: $("song-fill").value === "none" ? null : $("song-fill").value,
     fill_every: $("song-fill-every").value || null,
     sections,
   };
-}
-
-function addSongRow(sec = {}) {
-  const row = document.createElement("div");
-  row.className = "song-row";
-  row.innerHTML = `
-    <input class="s-name" type="text" value="${sec.name || "section"}" size="9">
-    <input class="s-prog" type="text" value="${sec.numerals || "I-IV-V-I"}" size="14" list="progression-names">
-    <select class="s-groove"></select>
-    <select class="s-style">
-      <option value="block">block chords</option>
-      <option value="strum">strummed</option>
-      <option value="arpeggio">arpeggiated</option>
-      <option value="drums">drums only</option>
-    </select>
-    <button class="s-del mini-play" title="Remove section">&#10005;</button>`;
-  const groove = row.querySelector(".s-groove");
-  fill(groove, ["none", ...META.drum_presets], sec.groove || "none");
-  row.querySelector(".s-style").value = sec.style || "block";
-  row.querySelector(".s-del").addEventListener("click", () => row.remove());
-  $("song-sections").appendChild(row);
 }
 
 function loadSongSpec(spec) {
@@ -1289,8 +1339,8 @@ function loadSongSpec(spec) {
   $("song-sound").value = spec.sound;
   $("song-fade").checked = spec.fade_out !== false;
   if (spec.mode) $("song-mode").value = spec.mode;
-  $("song-sections").innerHTML = "";
-  for (const sec of spec.sections) addSongRow(sec);
+  songSections = spec.sections.map((s) => ({ ...s }));
+  selectSection(songSections.length ? 0 : -1);
 }
 
 async function sketchSong() {
@@ -1303,11 +1353,11 @@ async function sketchSong() {
   }
 }
 
-async function songPost(path) {
+async function songPost(path, onlySelected = false) {
   const r = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(songSpec()),
+    body: JSON.stringify(songSpec(onlySelected)),
   });
   if (!r.ok) {
     const d = await r.json();
@@ -1530,6 +1580,7 @@ async function boot() {
   fill($("song-sound"), META.sounds, "electric_piano");
   [...$("song-sound").options].forEach((o) => (o.textContent = o.textContent.replaceAll("_", " ")));
   fill($("song-fill"), ["none", ...META.drum_fills], "none");
+  fill($("se-groove"), ["none", ...META.drum_presets], "none");
   for (const name of Object.keys(META.progressions)) {
     const o = document.createElement("option");
     o.value = name;
@@ -1537,40 +1588,44 @@ async function boot() {
   }
   $("song-swing").addEventListener("input", () =>
     ($("song-swing-label").textContent = $("song-swing").value));
+  $("song-bpm").addEventListener("change", songSummary);
   $("song-sketch").addEventListener("click", sketchSong);
-  $("song-add").addEventListener("click", () => addSongRow());
-  $("song-play").addEventListener("click", async (e) => {
+  ["se-name", "se-prog"].forEach((id) => $(id).addEventListener("input", updateSelectedSection));
+  ["se-groove", "se-style"].forEach((id) => $(id).addEventListener("change", updateSelectedSection));
+  $("song-add").addEventListener("click", () => {
+    songSections.push({ name: "section", numerals: "I-IV-V-I", groove: "none", style: "block" });
+    selectSection(songSections.length - 1);
+  });
+  $("se-del").addEventListener("click", () => {
+    songSections.splice(songSel, 1);
+    selectSection(Math.min(songSel, songSections.length - 1));
+  });
+  $("se-dup").addEventListener("click", () => {
+    const copy = { ...songSections[songSel] };
+    if (!/\d+$/.test(copy.name)) copy.name += " 2";
+    songSections.splice(songSel + 1, 0, copy);
+    selectSection(songSel + 1);
+  });
+  $("se-left").addEventListener("click", () => {
+    if (songSel <= 0) return;
+    [songSections[songSel - 1], songSections[songSel]] = [songSections[songSel], songSections[songSel - 1]];
+    selectSection(songSel - 1);
+  });
+  $("se-right").addEventListener("click", () => {
+    if (songSel >= songSections.length - 1) return;
+    [songSections[songSel + 1], songSections[songSel]] = [songSections[songSel], songSections[songSel + 1]];
+    selectSection(songSel + 1);
+  });
+  $("se-preview").addEventListener("click", async (e) => {
     if (audioEl && !audioEl.paused && audioEl._button === e.target) {
       audioEl.pause();
       return;
     }
-    $("song-error").textContent = "";
-    $("song-status").textContent = "rendering the band…";
     try {
-      const blob = await (await songPost("/api/song/audio")).blob();
-      $("song-status").textContent = "";
+      const blob = await (await songPost("/api/song/audio", true)).blob();
       playUrl(URL.createObjectURL(blob), e.target);
     } catch (err) {
-      $("song-status").textContent = "";
       $("song-error").textContent = err.message;
-    }
-  });
-  $("song-midi").addEventListener("click", async (e) => {
-    try {
-      downloadBlob(await (await songPost("/api/song/midi")).blob(), "song.mid");
-    } catch (err) {
-      $("song-error").textContent = err.message;
-    }
-  });
-  $("song-pdf").addEventListener("click", async (e) => {
-    try {
-      $("song-status").textContent = "engraving…";
-      const d = await (await songPost("/api/song/notation")).json();
-      await engraveSource(d.lilypond, d.lilypond_sig, e.target, "song-error");
-    } catch (err) {
-      $("song-error").textContent = err.message;
-    } finally {
-      $("song-status").textContent = "";
     }
   });
   sketchSong();

@@ -319,17 +319,24 @@ footer {
   h1 { font-size: 2rem; }
 }
 
-/* songwriter */
-.song-row {
-  display: grid; grid-template-columns: 7.5rem 10.5rem 11rem 9.5rem 2rem;
-  gap: 0.5rem; align-items: center; margin: 0.4rem 0;
+/* songwriter timeline */
+#song-timeline { display: flex; gap: 0.5rem; margin: 0.75rem 0 1.1rem; flex-wrap: wrap; }
+.song-block {
+  flex: 1 0 7rem; min-width: 7.5rem; cursor: pointer;
+  border: 1px solid; border-radius: 6px; padding: 0.55rem 0.7rem;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
-.song-row.song-head { margin-top: 1rem; font-style: italic; }
-.song-row input, .song-row select { font-size: 0.88rem; padding: 0.3rem 0.45rem; width: 100%; }
-@media (max-width: 720px) {
-  .song-row { grid-template-columns: 1fr 1fr; }
-  .song-row.song-head { display: none; }
+.song-block:hover { transform: translateY(-2px); }
+.song-block.selected { box-shadow: 0 0 0 2px var(--accent); }
+.sb-name { font-size: 1.02rem; }
+.sb-meta { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); margin-top: 0.15rem; }
+.sb-bars { font-style: italic; font-size: 0.75rem; color: var(--faint); margin-top: 0.3rem; }
+#song-editor {
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: 0.9rem 1rem 0.4rem; background: var(--code-bg);
 }
+#song-editor .controls { margin-bottom: 0.75rem; }
+.se-actions button { font-size: 0.85rem; padding: 0.3rem 0.7rem; }
 .song-row .s-del { border-color: var(--line); color: var(--faint); }
 .song-row .s-del:hover { border-color: var(--accent); color: var(--accent); background: none; }
 
