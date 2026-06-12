@@ -134,6 +134,12 @@
         <label>System
           <select id="tuner-system"></select>
         </label>
+        <label>A4 =
+          <select id="tuner-reference">
+            <option>432</option><option>438</option><option selected>440</option>
+            <option>442</option><option>444</option>
+          </select>
+        </label>
         <button id="tuner-toggle" class="play">&#127908; Start tuner</button>
       </div>
       <div class="results">
@@ -210,6 +216,22 @@ tuner.onmessage = (e) => {
           <h4>Beat frequencies</h4>
           <table class="kv" id="lab-beats"></table>
         </div>
+        <div class="card">
+          <h3>Voice leading <small>chord.voice_leading(other)</small></h3>
+          <div class="controls">
+            <label>To chord
+              <input type="text" id="vl-to" value="C" size="8" list="chord-symbols" autocomplete="off">
+            </label>
+            <button id="vl-go" class="play">Lead</button>
+          </div>
+          <table class="kv" id="vl-moves"></table>
+          <p id="vl-total" class="tones"></p>
+        </div>
+        <div class="card">
+          <h3>Solo over it <small>scale.recommend(…)</small></h3>
+          <p class="hint">Scales that fit this chord's tones — improv starting points.</p>
+          <div id="lab-solo" class="note-row"></div>
+        </div>
       </div>
       <p class="error" id="lab-error"></p>
     </section>
@@ -270,10 +292,16 @@ tuner.onmessage = (e) => {
         <label>Progression
           <select id="key-progression"></select>
         </label>
+        <button id="prog-random" class="secondary" title="Random progression (key.random_progression)">&#127922; Random</button>
         <button id="prog-play" class="play">&#9654; Play</button>
         <button id="prog-midi" class="secondary">&#8681; MIDI</button>
       </div>
       <div class="results">
+        <div class="card wide">
+          <h3>Circle of fifths <small>Key(…).signature · key.relative</small></h3>
+          <svg id="circle-fifths" viewBox="0 0 360 360" width="360" height="360"></svg>
+          <p class="hint" style="text-align:center">Click a key to explore it.</p>
+        </div>
         <div class="card wide">
           <h3 id="key-title">—</h3>
           <table id="key-table">
@@ -302,11 +330,6 @@ tuner.onmessage = (e) => {
             </label>
             <span id="key-suggestions" class="note-row"></span>
           </div>
-        </div>
-        <div class="card wide">
-          <h3>Circle of fifths <small>Key(…).signature · key.relative</small></h3>
-          <svg id="circle-fifths" viewBox="0 0 360 360" width="360" height="360"></svg>
-          <p class="hint" style="text-align:center">Click a key to explore it.</p>
         </div>
         <div class="card wide">
           <h3>Modulation planner <small>key.modulation_path(…) · key.pivot_chords(…)</small></h3>
@@ -376,6 +399,32 @@ tuner.onmessage = (e) => {
 
     <!-- ============ Tools ============ -->
     <section id="panel-tools" class="panel">
+      <div class="card wide">
+        <h3>Note inspector <small>Tone.solfege · .helmholtz · .overtones(…)</small></h3>
+        <div class="controls">
+          <label>Note
+            <select id="note-name"></select>
+          </label>
+          <label>Octave
+            <select id="note-octave">
+              <option>2</option><option>3</option><option selected>4</option><option>5</option>
+            </select>
+          </label>
+          <label>A4 =
+            <select id="note-reference">
+              <option>432</option><option selected>440</option><option>442</option>
+            </select>
+          </label>
+          <button id="note-go" class="play">Inspect</button>
+        </div>
+        <div id="note-result" class="hidden">
+          <table class="kv" id="note-facts"></table>
+          <h4>Overtone series <small>why the 7th harmonic sounds "off"</small></h4>
+          <table class="kv" id="note-overtones"></table>
+        </div>
+        <p class="error" id="note-error"></p>
+      </div>
+
       <div class="card wide">
         <h3>Chord identifier <small>Fingering.identify()</small></h3>
         <div class="controls">

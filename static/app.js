@@ -332,6 +332,38 @@ async function refreshScale() {
 
 /* ---------- keys & progressions panel ---------- */
 
+let randomSymbols = null; // when set, play/MIDI use the rolled progression
+
+function renderProgressionRow(chords) {
+  const row = $("prog-chords");
+  row.innerHTML = "";
+  for (const ch of chords) {
+    const div = document.createElement("div");
+    div.className = "prog-chord";
+    div.innerHTML = `<div class="numeral">${ch.numeral}</div><div class="sym">${ch.symbol}</div>`;
+    if (ch.positions) {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("width", 130);
+      svg.setAttribute("height", 160);
+      chordDiagram(svg, ch.positions, ch.strings, { width: 130, height: 160 });
+      div.appendChild(svg);
+    }
+    row.appendChild(div);
+  }
+}
+
+async function rollProgression() {
+  const tonic = encodeURIComponent($("key-tonic").value);
+  const mode = $("key-mode").value;
+  try {
+    const d = await api(`/api/progression/random?tonic=${tonic}&mode=${mode}`);
+    renderProgressionRow(d.chords);
+    randomSymbols = d.symbols;
+  } catch (e) {
+    $("key-error").textContent = e.message;
+  }
+}
+
 function progParams() {
   const tonic = encodeURIComponent($("key-tonic").value);
   const mode = $("key-mode").value;
@@ -358,21 +390,8 @@ async function refreshKey() {
     $("key-extra").textContent = `signature: ${sigText} · relative: ${k.relative}`;
 
     const p = await api(`/api/progression?${progParams()}`);
-    const row = $("prog-chords");
-    row.innerHTML = "";
-    for (const ch of p.chords) {
-      const div = document.createElement("div");
-      div.className = "prog-chord";
-      div.innerHTML = `<div class="numeral">${ch.numeral}</div><div class="sym">${ch.symbol}</div>`;
-      if (ch.positions) {
-        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        svg.setAttribute("width", 130);
-        svg.setAttribute("height", 160);
-        chordDiagram(svg, ch.positions, ch.strings, { width: 130, height: 160 });
-        div.appendChild(svg);
-      }
-      row.appendChild(div);
-    }
+    renderProgressionRow(p.chords);
+    randomSymbols = null;
 
     // beyond the key: borrowed chords + secondary dominants + suggestions
     const symbolize = (s) => s.replace(" major", "").replace(" minor", "m")
@@ -769,7 +788,7 @@ async function tunerTick() {
   const slice = all.subarray(all.length - need);
   tuner.busy = true;
   try {
-    const r = await fetch(`/api/tools/tune?rate=${tuner.ctx.sampleRate}&system=${encodeURIComponent($("tuner-system").value)}`, {
+    const r = await fetch(`/api/tools/tune?rate=${tuner.ctx.sampleRate}&system=${encodeURIComponent($("tuner-system").value)}&reference=${$("tuner-reference").value}`, {
       method: "POST",
       headers: { "Content-Type": "application/octet-stream" },
       body: slice.buffer.slice(slice.byteOffset, slice.byteOffset + slice.byteLength),
@@ -784,7 +803,7 @@ async function tunerTick() {
 // readings arrive 20/sec). Western-only — analyze_frame thinks in MIDI.
 async function tryNativeTuner() {
   try {
-    const r = await fetch("/api/tuner/start", { method: "POST" });
+    const r = await fetch(`/api/tuner/start?reference=${$("tuner-reference").value}`, { method: "POST" });
     const data = await r.json();
     if (!r.ok) {
       tuner.nativeFailure = data.error || r.statusText;
@@ -937,8 +956,50 @@ async function refreshLab() {
     $("lab-beats").innerHTML = d.beat_frequencies.length
       ? d.beat_frequencies.map((b) => `<tr><td>${b.pair}</td><td>${b.hz} Hz</td></tr>`).join("")
       : "<tr><td>—</td></tr>";
+    pillRow($("lab-solo"), d.solo_scales, (pill, s) => {
+      pill.innerHTML = `${s.tonic} ${s.scale} <small>${Math.round(s.fit * 100)}%</small>`;
+      pill.append(" ", playButton(`/api/scale/audio?tonic=${encodeURIComponent(s.tonic)}&octave=4&name=${encodeURIComponent(s.scale)}`));
+    });
+    refreshVoiceLeading();
   } catch (e) {
     $("lab-error").textContent = e.message;
+  }
+}
+
+async function refreshVoiceLeading() {
+  const from = $("lab-symbol").value.trim();
+  const to = $("vl-to").value.trim();
+  if (!from || !to) return;
+  try {
+    const d = await api(`/api/chord/voice-leading?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+    const arrow = (n) => (n === 0 ? "→ stays" : n > 0 ? `↑ +${n}` : `↓ ${n}`);
+    $("vl-moves").innerHTML = d.moves.map((m) =>
+      `<tr><td>${m.from} → ${m.to}</td><td>${arrow(m.semitones)}</td></tr>`).join("");
+    $("vl-total").textContent = `${d.from} → ${d.to} · total motion: ${d.total_motion} semitones`;
+  } catch (e) {
+    $("vl-moves").innerHTML = "";
+    $("vl-total").textContent = e.message;
+  }
+}
+
+/* ---------- note inspector ---------- */
+
+async function inspectNote() {
+  $("note-error").textContent = "";
+  try {
+    const q = `name=${encodeURIComponent($("note-name").value)}&octave=${$("note-octave").value}&reference=${$("note-reference").value}`;
+    const d = await api(`/api/tools/note?${q}`);
+    $("note-result").classList.remove("hidden");
+    $("note-facts").innerHTML = [
+      ["note", d.note], ["frequency", `${d.frequency} Hz`], ["MIDI", d.midi],
+      ["solfège", d.solfege], ["Helmholtz", d.helmholtz],
+      ["interval from A4", d.interval_from_a4],
+    ].map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+    $("note-overtones").innerHTML = d.overtones.map((o) =>
+      `<tr><td>${o.n}×</td><td>${o.hz} Hz</td><td>≈ ${o.nearest}${o.cents ? ` (${o.cents > 0 ? "+" : ""}${o.cents}¢)` : ""}</td></tr>`).join("");
+  } catch (e) {
+    $("note-result").classList.add("hidden");
+    $("note-error").textContent = e.message;
   }
 }
 
@@ -1079,8 +1140,15 @@ async function boot() {
       playUrl(`/api/symbols/audio?symbols=${encodeURIComponent(lastHarmonized.join(","))}${soundQ()}`, e.target);
   });
   ["key-tonic", "key-mode", "key-progression"].forEach((id) =>
-    $(id).addEventListener("change", refreshKey));
+    $(id).addEventListener("change", () => { randomSymbols = null; refreshKey(); }));
   $("key-after").addEventListener("change", refreshSuggestions);
+  $("vl-go").addEventListener("click", refreshVoiceLeading);
+  $("vl-to").addEventListener("keydown", (e) => { if (e.key === "Enter") refreshVoiceLeading(); });
+  fill($("note-name"), META.roots, "A");
+  $("note-go").addEventListener("click", inspectNote);
+  ["note-name", "note-octave", "note-reference"].forEach((id) =>
+    $(id).addEventListener("change", inspectNote));
+  inspectNote();
   ["mod-tonic", "mod-mode"].forEach((id) =>
     $(id).addEventListener("change", refreshModulation));
   $("mod-play").addEventListener("click", (e) => {
@@ -1134,8 +1202,14 @@ async function boot() {
     const q = `system=${encodeURIComponent($("scale-system").value)}&tonic=${encodeURIComponent($("scale-tonic").value)}&octave=${$("scale-octave").value}&name=${encodeURIComponent($("scale-name").value)}`;
     playUrl(`/api/scale/audio?${q}${soundQ()}`, e.target);
   });
-  $("prog-play").addEventListener("click", (e) =>
-    playUrl(`/api/progression/audio?${progParams()}${soundQ()}`, e.target));
+  $("prog-play").addEventListener("click", (e) => {
+    if (randomSymbols) {
+      playUrl(`/api/symbols/audio?symbols=${encodeURIComponent(randomSymbols.join(","))}${soundQ()}`, e.target);
+      return;
+    }
+    playUrl(`/api/progression/audio?${progParams()}${soundQ()}`, e.target);
+  });
+  $("prog-random").addEventListener("click", rollProgression);
   $("prog-midi").addEventListener("click", () =>
     window.location.assign(`/api/progression/midi?${progParams()}`));
 

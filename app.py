@@ -284,6 +284,13 @@ async def chord_lab(req, resp):
                  for a, b, hz in chord.beat_frequencies]
     except Exception:
         beats = []
+    try:
+        names = [t.name for t in chord.tones]
+        solo_scales = [{"tonic": tonic, "scale": scale, "fit": round(fit, 2)}
+                       for tonic, scale, fit in
+                       TonedScale(tonic="C4")["major"].recommend(*names, top=5)]
+    except Exception:
+        solo_scales = []
 
     resp.media = {
         "symbol": chord.symbol,
@@ -298,7 +305,25 @@ async def chord_lab(req, resp):
         "voicings": voicings,
         "tritone_sub": tritone_sub,
         "extensions": extensions,
+        "solo_scales": solo_scales,
     }
+
+
+@api.route("/api/chord/voice-leading")
+async def chord_voice_leading(req, resp):
+    """How each voice moves between two chords (chord.voice_leading)."""
+    try:
+        a = Chord.from_name(req.params.get("from", "G7"))
+        b = Chord.from_name(req.params.get("to", "C"))
+    except Exception as e:
+        return error(resp, 422, f"Couldn't parse chords: {e}")
+    try:
+        moves = [{"from": str(x), "to": str(y), "semitones": n}
+                 for x, y, n in a.voice_leading(b)]
+    except Exception as e:
+        return error(resp, 422, f"Voice leading failed: {e}")
+    resp.media = {"from": a.symbol, "to": b.symbol, "moves": moves,
+                  "total_motion": sum(abs(m["semitones"]) for m in moves)}
 
 
 @api.route("/api/symbols/audio")
@@ -471,12 +496,8 @@ def _progression_chords(req):
     return key, list(numerals), key.progression(*numerals)
 
 
-@api.route("/api/progression")
-async def progression_view(req, resp):
-    try:
-        key, numerals, chords = _progression_chords(req)
-    except Exception as e:
-        return error(resp, 400, f"Bad progression: {e}")
+def _chords_payload(numerals, chords):
+    """Per-chord display payload (symbol + guitar fingering) for a progression."""
     fretboard = Fretboard.guitar()
     out = []
     for numeral, chord in zip(numerals, chords):
@@ -492,7 +513,40 @@ async def progression_view(req, resp):
             except Exception:
                 pass
         out.append(entry)
-    resp.media = {"key": f"{key.tonic_name} {key.mode}", "chords": out}
+    return out
+
+
+@api.route("/api/progression")
+async def progression_view(req, resp):
+    try:
+        key, numerals, chords = _progression_chords(req)
+    except Exception as e:
+        return error(resp, 400, f"Bad progression: {e}")
+    resp.media = {"key": f"{key.tonic_name} {key.mode}",
+                  "chords": _chords_payload(numerals, chords)}
+
+
+@api.route("/api/progression/random")
+async def progression_random(req, resp):
+    """Roll the dice: key.random_progression, with Roman-numeral analysis."""
+    from pytheory import analyze_progression
+
+    try:
+        key = _key(req)
+    except Exception as e:
+        return error(resp, 400, f"Bad key: {e}")
+    length = max(2, min(8, int(req.params.get("length", "4") or 4)))
+    chords = key.random_progression(length)
+    try:
+        numerals = analyze_progression(chords, key=key.tonic_name, mode=key.mode)
+        numerals = [n or "?" for n in numerals]
+    except Exception:
+        numerals = ["?"] * len(chords)
+    resp.media = {
+        "key": f"{key.tonic_name} {key.mode}",
+        "symbols": [c.symbol for c in chords],
+        "chords": _chords_payload(numerals, chords),
+    }
 
 
 @api.route("/api/progression/audio")
@@ -838,6 +892,39 @@ async def tuner_strings(req, resp):
     ]}
 
 
+@api.route("/api/tools/note")
+async def note_inspector(req, resp):
+    """Everything pytheory knows about one note: names, frequency, overtones."""
+    name = req.params.get("name", "A")
+    octave = int(req.params.get("octave", "4"))
+    reference = float(req.params.get("reference", "440") or 440)
+    temperament = req.params.get("temperament", "equal")
+    if temperament not in TEMPERAMENTS:
+        return error(resp, 400, f"Unknown temperament: {temperament}")
+    try:
+        tone = Tone.from_string(f"{name}{octave}", system="western")
+    except Exception as e:
+        return error(resp, 404, f"Unknown note: {e}")
+    freq = tone.pitch(reference_pitch=reference, temperament=temperament)
+    a4 = Tone.from_string("A4", system="western")
+    overtones = []
+    for i, hz in enumerate(tone.overtones(8), start=1):
+        hz = hz * (freq / tone.frequency)  # honor reference pitch + temperament
+        nearest = Tone.from_frequency(hz)
+        cents = 1200 * np.log2(hz / nearest.frequency)
+        overtones.append({"n": i, "hz": round(hz, 1),
+                          "nearest": str(nearest), "cents": round(cents)})
+    resp.media = {
+        "note": str(tone),
+        "frequency": round(freq, 2),
+        "midi": tone.midi,
+        "solfege": tone.solfege,
+        "helmholtz": tone.helmholtz,
+        "interval_from_a4": tone.interval_to(a4),
+        "overtones": overtones,
+    }
+
+
 # pytheory's native tuner (mic on the server, SSE stream on :8123).
 _pytuner = {"tuner": None, "serving": False}
 
@@ -851,12 +938,16 @@ async def tuner_native_start(req, resp):
         from pytheory.tuner import Tuner, serve
     except Exception as e:
         return error(resp, 501, f"pytheory tuner unavailable: {e}")
+    reference = float(req.params.get("reference", "440") or 440)
     try:
         if _pytuner["tuner"] is None:
-            _pytuner["tuner"] = Tuner()
+            _pytuner["tuner"] = Tuner(reference_pitch=reference)
             _pytuner["tuner"].start()
         elif _pytuner["tuner"]._stream is None:  # restarted after stop
+            _pytuner["tuner"].reference_pitch = reference
             _pytuner["tuner"].start()
+        else:
+            _pytuner["tuner"].reference_pitch = reference  # live retune
     except Exception as e:
         _pytuner["tuner"] = None
         return error(resp, 501, f"Couldn't open the server microphone: {e}")
@@ -903,15 +994,18 @@ async def tune(req, resp):
     system = req.params.get("system", "western")
     if system not in SYSTEM_META:
         return error(resp, 400, f"Unknown system: {system}")
+    reference = float(req.params.get("reference", "440") or 440)
     freq = float(np.median(freqs[voiced]))
-    tone = Tone.from_frequency(freq, system=system)
-    cents = 1200 * math.log2(freq / tone.frequency)
+    # Tone frequencies assume A4=440; normalize the measurement instead.
+    tone = Tone.from_frequency(freq * 440.0 / reference, system=system)
+    target = tone.frequency * reference / 440.0
+    cents = 1200 * math.log2(freq / target)
     resp.media = {
         "voiced": True,
         "frequency": round(freq, 2),
         "note": tone.name,
         "octave": getattr(tone, "octave", None),
-        "target": round(tone.frequency, 2),
+        "target": round(target, 2),
         "cents": round(cents, 1),
         "system": system,
     }
