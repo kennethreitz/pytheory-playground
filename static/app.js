@@ -221,10 +221,23 @@ async function identifyCurrentVoicing() {
     $("chord-tab").textContent = d.tab;
     $("chord-tones").textContent = d.tones.length ? `tones: ${d.tones.join(" · ")}` : "";
     chordState.voicingTones = d.tones;
-    selectChordFromSymbol(d.symbol);
+    if (selectChordFromSymbol(d.symbol)) {
+      // keep the voicing alternatives and chord-tone map in sync with
+      // whatever chord the edited shape turned into
+      refreshAlternatives(d.symbol);
+      if ($("gscale-mode").value === "chord") refreshGuitarScale();
+    }
   } catch (e) {
     $("chord-error").textContent = e.message;
   }
+}
+
+async function refreshAlternatives(symbol) {
+  if (!symbol || !META.chords.includes(symbol)) return;
+  try {
+    const c = await api(`/api/chord?name=${encodeURIComponent(symbol)}&instrument=${$("chord-instrument").value}${chordTuning()}`);
+    renderAlternatives(c.alternatives || []);
+  } catch { /* keep the previous row */ }
 }
 
 async function refreshChord() {
