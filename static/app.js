@@ -1169,10 +1169,13 @@ async function tunerStart() {
   if (!tunerChordMode() && $("tuner-system").value === "western" && await tryNativeTuner()) return;
   tuner.mode = "mic";
   try {
-    // noise suppression keeps room hum out of the pitch tracker; echo
-    // cancellation stops the reference tones from feeding back into it
+    // Note mode: noise suppression keeps room hum out of the pitch tracker;
+    // echo cancellation stops reference tones from feeding back into it.
+    // Chord mode wants the raw mic — that speech DSP ducks a sustained
+    // ringing chord like stationary noise and starves the chromagram.
+    const dsp = !tunerChordMode();
     tuner.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      audio: { echoCancellation: dsp, noiseSuppression: dsp, autoGainControl: dsp },
     });
   } catch (e) {
     $("tuner-error").textContent = `Microphone access denied: ${e.message}`;

@@ -1493,7 +1493,15 @@ async def tools_identify_chord(req, resp):
         return
     rate = int(req.params.get("rate", "48000"))
     samples = np.frombuffer(body, dtype=np.float32).astype(np.float64)
-    resp.media = {"chord": identify_chord(samples, rate)}
+    # Makeup gain: identify_chord hard-gates on absolute RMS (1e-3) but its
+    # matching is level-invariant, so normalize quiet mic audio and let only
+    # true silence fail the gate. Boosted room noise scores up to ~0.62
+    # against the chord templates, so the threshold sits just above that
+    # (real strums measure 0.72+ even with a heavy noise floor).
+    rms = float(np.sqrt((samples**2).mean()))
+    if 1e-5 < rms < 0.05:
+        samples = samples * (0.05 / rms)
+    resp.media = {"chord": identify_chord(samples, rate, min_confidence=0.65)}
 
 
 @api.route("/api/tools/harmonize")
