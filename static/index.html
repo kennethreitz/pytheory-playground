@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PyTheory Playground</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#127928;</text></svg>">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>PyTheory <span>Playground</span></h1>
+    <p class="tagline">Music theory for humans — every result below is computed live by
+      <a href="https://github.com/kennethreitz/pytheory" target="_blank" rel="noopener">pytheory</a>
+      <span id="version"></span> on the server.</p>
+    <nav id="tabs">
+      <button data-panel="about" class="active">About</button>
+      <button data-panel="chords">Guitar Tab</button>
+      <button data-panel="tuner">Tuner</button>
+      <button data-panel="lab">Chord Lab</button>
+      <button data-panel="scales">Scales</button>
+      <button data-panel="keys">Keys &amp; Progressions</button>
+      <button data-panel="tools">Tools</button>
+      <label id="sound-wrap" title="Playback sound (pytheory synth presets)">&#9835;
+        <select id="sound"></select>
+      </label>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ============ About ============ -->
+    <section id="panel-about" class="panel active">
+      <div class="prose">
+        <p><a href="https://github.com/kennethreitz/pytheory">PyTheory</a> is <em>music theory for
+        humans</em> — a Python library that models tones, scales, chords, keys, fretboards, and
+        rhythm in a way people can actually read. It speaks twelve-tone Western harmony fluently,
+        but it isn't limited to it: Indian rāgas, Arabic maqāmāt, gamelan slendro &amp; pelog,
+        19-TET, and a dozen other tonal systems are first-class citizens, complete with microtonal
+        synthesis.</p>
+
+        <h3>Install it</h3>
+        <p class="hint">Not familiar with uv? It's the fast Python package manager —
+          <a href="https://docs.astral.sh/uv/getting-started/installation/">install it here</a>.</p>
+        <pre>$ uv add pytheory</pre>
+        <p>Then, in a REPL:</p>
+        <pre>>>> from pytheory import Fretboard, CHARTS
+>>> print(CHARTS["western"]["Cmaj7"].tab(fretboard=Fretboard.guitar()))</pre>
+
+        <h3>This playground</h3>
+        <p>Everything on this site is computed live by pytheory on the server — no music theory is
+        re-implemented in JavaScript. Each card cites the API call behind it. Explore:</p>
+        <ul>
+          <li><a href="#chords" class="goto" data-panel="chords">Guitar Tab</a> — chord charts for
+            six fretted instruments, with custom tunings, capo, and a click-to-edit fretboard that
+            names whatever you finger.</li>
+          <li><a href="#lab" class="goto" data-panel="lab">Chord Lab</a> — voicings, inversions,
+            tension, pitch-class set theory, and tritone substitutions for any chord symbol.</li>
+          <li><a href="#scales" class="goto" data-panel="scales">Scales</a> — every scale and mode
+            across sixteen tonal systems, harmonized and playable.</li>
+          <li><a href="#keys" class="goto" data-panel="keys">Keys &amp; Progressions</a> — diatonic
+            chords, borrowed chords, secondary dominants, named progressions, and a modulation
+            planner.</li>
+          <li><a href="#tools" class="goto" data-panel="tools">Tools</a> — identify chords from
+            fret positions, analyze progressions, detect keys, transcribe hummed or whistled
+            recordings into notation, and convert MIDI to LilyPond (with PDF engraving), ABC,
+            MusicXML, or tab.</li>
+        </ul>
+
+        <h3>Links</h3>
+        <ul>
+          <li><a href="https://github.com/kennethreitz/pytheory">Source on GitHub</a></li>
+          <li><a href="https://pypi.org/project/pytheory/">pytheory on PyPI</a></li>
+          <li><a href="https://pytheory.kennethreitz.org/">Documentation</a></li>
+          <li><a href="https://kennethreitz.org/">kennethreitz.org</a></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ============ Chords ============ -->
+    <section id="panel-chords" class="panel">
+      <div class="controls">
+        <label>Root
+          <select id="chord-root"></select>
+        </label>
+        <label>Quality
+          <select id="chord-quality"></select>
+        </label>
+        <label>Instrument
+          <select id="chord-instrument"></select>
+        </label>
+        <label>Tuning
+          <select id="chord-tuning"></select>
+        </label>
+        <label id="chord-tuning-custom-wrap" class="hidden">Open strings (low&rarr;high)
+          <input type="text" id="chord-tuning-custom" placeholder="D2,A2,D3,G3,A3,D4" size="20">
+        </label>
+        <label>Capo
+          <input type="number" id="chord-capo" value="0" min="0" max="12" style="width:4.5rem">
+        </label>
+        <button id="chord-play" class="play">&#9654; Play</button>
+      </div>
+      <div class="results" id="chord-results">
+        <div class="card">
+          <h3 id="chord-title">—</h3>
+          <svg id="chord-diagram" viewBox="0 0 220 260" width="220" height="260"></svg>
+          <div class="fret-nav">
+            <button id="fret-down" title="Lower fret window">&lsaquo;</button>
+            <span id="fret-label">1fr</span>
+            <button id="fret-up" title="Higher fret window">&rsaquo;</button>
+          </div>
+          <p id="chord-tones" class="tones"></p>
+          <p class="hint">Click the diagram to build your own voicing — above the nut toggles
+            open&nbsp;/&nbsp;muted. Matching chords get selected automatically.</p>
+        </div>
+        <div class="card">
+          <h3>ASCII tab <small>NamedChord.tab(fretboard=…)</small></h3>
+          <pre id="chord-tab"></pre>
+        </div>
+      </div>
+      <p class="error" id="chord-error"></p>
+    </section>
+
+    <!-- ============ Tuner ============ -->
+    <section id="panel-tuner" class="panel">
+      <div class="controls">
+        <label>Instrument
+          <select id="tuner-instrument"></select>
+        </label>
+        <label id="tuner-tuning-wrap">Tuning
+          <select id="tuner-tuning"></select>
+        </label>
+        <label>System
+          <select id="tuner-system"></select>
+        </label>
+        <button id="tuner-toggle" class="play">&#127908; Start tuner</button>
+      </div>
+      <div class="results">
+        <div class="card wide" id="tuner-card">
+          <h3>Tuner <small>pytheory.tuner.Tuner · analyze_frame(…)</small></h3>
+          <details class="hint">
+            <summary>Tap the stream from your own JS — three lines</summary>
+            <pre>const tuner = new EventSource("http://localhost:8123/stream");
+tuner.onmessage = (e) => {
+  const { freq, note, octave, cents, in_tune } = JSON.parse(e.data);
+};</pre>
+          </details>
+          <div class="tuner-display">
+            <div class="tuner-note" id="tuner-note">&mdash;</div>
+            <div class="tuner-freq" id="tuner-freq">listening for a note&hellip;</div>
+            <div class="tuner-gauge">
+              <div class="tuner-scale">
+                <span>-50&cent;</span><span>0</span><span>+50&cent;</span>
+              </div>
+              <div class="tuner-track">
+                <div class="tuner-center"></div>
+                <div class="tuner-needle" id="tuner-needle"></div>
+              </div>
+              <div class="tuner-verdict" id="tuner-verdict"></div>
+            </div>
+          </div>
+          <h4>Open strings <small>click to hear a reference tone</small></h4>
+          <div id="tuner-strings" class="note-row"></div>
+          <p class="hint">Allow microphone access, play one string at a time, and tune until
+            the needle centers. Strings light up as you get close.</p>
+        </div>
+      </div>
+      <p class="error" id="tuner-error"></p>
+    </section>
+
+    <!-- ============ Chord Lab ============ -->
+    <section id="panel-lab" class="panel">
+      <div class="controls">
+        <label>Chord symbol
+          <input type="text" id="lab-symbol" value="G7" size="12" list="chord-symbols"
+                 autocomplete="off" placeholder="e.g. Am9, F#dim">
+        </label>
+        <datalist id="chord-symbols"></datalist>
+        <button id="lab-go" class="play">Analyze</button>
+      </div>
+      <div class="results">
+        <div class="card">
+          <h3 id="lab-title">—</h3>
+          <p id="lab-tones" class="tones"></p>
+          <table class="kv">
+            <tr><td>intervals</td><td id="lab-intervals"></td></tr>
+            <tr><td>pitch classes</td><td id="lab-pcs"></td></tr>
+            <tr><td>Forte number</td><td id="lab-forte"></td></tr>
+            <tr><td>figured bass</td><td id="lab-figured"></td></tr>
+            <tr><td>tension</td><td id="lab-tension"></td></tr>
+            <tr><td>dissonance</td><td id="lab-dissonance"></td></tr>
+          </table>
+        </div>
+        <div class="card">
+          <h3>Voicings <small>chord.inversion() · .drop2() · .open_voicing()</small></h3>
+          <div id="lab-voicings"></div>
+        </div>
+        <div class="card">
+          <h3>Substitutions <small>chord.tritone_sub() · .extensions()</small></h3>
+          <p id="lab-sub"></p>
+          <p id="lab-ext" class="tones"></p>
+        </div>
+      </div>
+      <p class="error" id="lab-error"></p>
+    </section>
+
+    <!-- ============ Scales ============ -->
+    <section id="panel-scales" class="panel">
+      <div class="controls">
+        <label>System
+          <select id="scale-system"></select>
+        </label>
+        <label>Tonic
+          <select id="scale-tonic"></select>
+        </label>
+        <label>Octave
+          <select id="scale-octave">
+            <option>3</option><option selected>4</option><option>5</option>
+          </select>
+        </label>
+        <label>Scale
+          <select id="scale-name"></select>
+        </label>
+        <button id="scale-play" class="play">&#9654; Play</button>
+      </div>
+      <div class="results">
+        <div class="card wide">
+          <h3 id="scale-title">—</h3>
+          <div id="scale-notes" class="note-row"></div>
+          <div id="scale-piano"></div>
+        </div>
+        <div class="card wide" id="scale-harmonized-card">
+          <h3>Harmonized <small>scale.harmonize()</small>
+            <button id="scale-harmonized-all" class="mini-play wide-play" title="Play all">&#9654; all</button>
+          </h3>
+          <div id="scale-harmonized" class="note-row"></div>
+        </div>
+        <div class="card wide" id="scale-fretboard-card">
+          <h3>On the fretboard <small>fretboard.scale_diagram(scale)</small>
+            <select id="scale-instrument" class="inline"></select>
+          </h3>
+          <pre id="scale-fretboard"></pre>
+        </div>
+      </div>
+      <p class="error" id="scale-error"></p>
+    </section>
+
+    <!-- ============ Keys & Progressions ============ -->
+    <section id="panel-keys" class="panel">
+      <div class="controls">
+        <label>Tonic
+          <select id="key-tonic"></select>
+        </label>
+        <label>Mode
+          <select id="key-mode">
+            <option selected>major</option>
+            <option>minor</option>
+          </select>
+        </label>
+        <label>Progression
+          <select id="key-progression"></select>
+        </label>
+        <button id="prog-play" class="play">&#9654; Play</button>
+        <button id="prog-midi">&#8681; MIDI</button>
+      </div>
+      <div class="results">
+        <div class="card wide">
+          <h3 id="key-title">—</h3>
+          <table id="key-table">
+            <thead><tr id="key-numerals"></tr></thead>
+            <tbody>
+              <tr id="key-triads"></tr>
+              <tr id="key-sevenths"></tr>
+            </tbody>
+          </table>
+          <p id="key-extra" class="tones"></p>
+        </div>
+        <div class="card wide">
+          <h3>Progression <small>key.progression(…)</small></h3>
+          <div id="prog-chords" class="prog-row"></div>
+        </div>
+        <div class="card wide">
+          <h3>Beyond the key <small>key.borrowed_chords · key.secondary_dominant(…)</small></h3>
+          <h4>Borrowed (modal interchange)</h4>
+          <div id="key-borrowed" class="note-row"></div>
+          <h4>Secondary dominants</h4>
+          <div id="key-secondary" class="note-row"></div>
+          <h4>What next? <small>key.suggest_next(…)</small></h4>
+          <div class="controls">
+            <label>After chord
+              <select id="key-after"></select>
+            </label>
+            <span id="key-suggestions" class="note-row"></span>
+          </div>
+        </div>
+        <div class="card wide">
+          <h3>Modulation planner <small>key.modulation_path(…) · key.pivot_chords(…)</small></h3>
+          <div class="controls">
+            <label>To key
+              <select id="mod-tonic"></select>
+            </label>
+            <label>Mode
+              <select id="mod-mode"><option selected>major</option><option>minor</option></select>
+            </label>
+            <button id="mod-play" class="play">&#9654; Play path</button>
+          </div>
+          <div id="mod-path" class="note-row"></div>
+          <p id="mod-pivots" class="tones"></p>
+        </div>
+      </div>
+      <p class="error" id="key-error"></p>
+    </section>
+
+    <!-- ============ Tools ============ -->
+    <section id="panel-tools" class="panel">
+      <div class="card wide">
+        <h3>Chord identifier <small>Fingering.identify()</small></h3>
+        <div class="controls">
+          <label>Frets (low string first, x = muted)
+            <input type="text" id="ident-frets" value="x,3,2,0,1,0" size="18">
+          </label>
+          <label>Instrument
+            <select id="ident-instrument"></select>
+          </label>
+          <label>Tuning (optional, low&rarr;high)
+            <input type="text" id="ident-tuning" placeholder="standard, drop d, or D2,A2,…" size="20">
+          </label>
+          <button id="ident-go" class="play">Identify</button>
+        </div>
+        <div id="ident-result" class="hidden">
+          <p><strong id="ident-name"></strong> <span id="ident-tones" class="tones"></span></p>
+          <pre id="ident-tab"></pre>
+        </div>
+        <p class="error" id="ident-error"></p>
+      </div>
+
+      <div class="card wide">
+        <h3>Progression analyzer <small>analyze_progression(…)</small></h3>
+        <div class="controls">
+          <label>Chords (comma-separated)
+            <input type="text" id="analyze-chords" value="C,Am,F,G" size="24">
+          </label>
+          <label>Key
+            <select id="analyze-key"></select>
+          </label>
+          <label>Mode
+            <select id="analyze-mode"><option selected>major</option><option>minor</option></select>
+          </label>
+          <button id="analyze-go" class="play">Analyze</button>
+        </div>
+        <div id="analyze-result" class="note-row"></div>
+        <p class="error" id="analyze-error"></p>
+      </div>
+
+      <div class="card wide">
+        <h3>Key detector <small>Key.detect(…)</small></h3>
+        <div class="controls">
+          <label>Notes (comma-separated)
+            <input type="text" id="detect-notes" value="C,E,G,B,D" size="24">
+          </label>
+          <button id="detect-go" class="play">Detect</button>
+        </div>
+        <p id="detect-result"></p>
+        <p class="error" id="detect-error"></p>
+      </div>
+
+      <div class="card wide">
+        <h3>Audio &rarr; LilyPond / ABC / Tab <small>Score.from_wav(…)</small></h3>
+        <p class="hint">Hum a melody, whistle a hook, or record a bass line — monophonic
+          transcription via YIN pitch tracking. WAV, m4a voice memos, and mp3 all work.</p>
+        <div class="controls">
+          <input type="file" id="audio-file" accept=".wav,.m4a,.mp3,.aiff,.flac,audio/*">
+          <label>Title <input type="text" id="audio-title" value="Transcribed audio"></label>
+          <label>Timing
+            <select id="audio-quantize">
+              <option value="">as performed</option>
+              <option value="0.25" selected>snap to 16ths</option>
+              <option value="0.5">snap to 8ths</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" id="audio-split"> split bass / melody</label>
+          <button id="audio-convert" class="play">Transcribe</button>
+        </div>
+        <div id="audio-outputs" class="hidden">
+          <p id="audio-detected" class="hint"></p>
+          <nav class="subtabs" id="audio-format-tabs">
+            <button data-fmt="lilypond" class="active">LilyPond</button>
+            <button data-fmt="abc">ABC</button>
+            <button data-fmt="musicxml">MusicXML</button>
+            <button data-fmt="tab">ASCII Tab</button>
+          </nav>
+          <pre id="audio-output"></pre>
+          <button id="audio-download">&#8681; Download</button>
+          <button id="audio-pdf" class="hidden">&#9836; Engrave PDF</button>
+          <button id="audio-midi-dl" class="hidden">&#8681; MIDI</button>
+        </div>
+        <p class="error" id="audio-error"></p>
+      </div>
+
+      <div class="card wide">
+        <h3>MIDI &rarr; LilyPond / ABC / Tab <small>Score.from_midi(…)</small></h3>
+        <div class="controls">
+          <input type="file" id="midi-file" accept=".mid,.midi,audio/midi">
+          <label>Title <input type="text" id="midi-title" value="Imported from MIDI"></label>
+          <label>Key
+            <select id="midi-key"></select>
+          </label>
+          <button id="midi-convert" class="play">Convert</button>
+        </div>
+        <div id="midi-outputs" class="hidden">
+          <p id="midi-detected" class="hint"></p>
+          <nav class="subtabs" id="midi-format-tabs">
+            <button data-fmt="lilypond" class="active">LilyPond</button>
+            <button data-fmt="abc">ABC</button>
+            <button data-fmt="musicxml">MusicXML</button>
+            <button data-fmt="tab">ASCII Tab</button>
+          </nav>
+          <pre id="midi-output"></pre>
+          <button id="midi-download">&#8681; Download</button>
+          <button id="midi-pdf" class="hidden">&#9836; Engrave PDF</button>
+        </div>
+        <p class="error" id="midi-error"></p>
+        <p class="hint">No MIDI handy? Grab one from the Keys &amp; Progressions tab with the MIDI button.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Built with <a href="https://github.com/kennethreitz/pytheory">pytheory</a> +
+       <a href="https://github.com/kennethreitz/responder">responder</a>.</p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

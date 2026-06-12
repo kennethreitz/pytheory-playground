@@ -1,0 +1,258 @@
+/* PyTheory Playground — styled after kennethreitz.org (Tufte CSS: ET Book on paper). */
+
+@font-face {
+  font-family: "ET Book";
+  src: url("https://cdn.jsdelivr.net/gh/edwardtufte/et-book@gh-pages/et-book/et-book-roman-line-figures/et-book-roman-line-figures.woff") format("woff");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "ET Book";
+  src: url("https://cdn.jsdelivr.net/gh/edwardtufte/et-book@gh-pages/et-book/et-book-display-italic-old-style-figures/et-book-display-italic-old-style-figures.woff") format("woff");
+  font-weight: normal;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "ET Book";
+  src: url("https://cdn.jsdelivr.net/gh/edwardtufte/et-book@gh-pages/et-book/et-book-bold-line-figures/et-book-bold-line-figures.woff") format("woff");
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Dark mode by default — same palette as kennethreitz.org's dark theme. */
+:root {
+  --bg: #0d1117;
+  --ink: #e5e5e5;
+  --muted: #9aa0a6;
+  --faint: #6e7681;
+  --line: #30363d;
+  --card: #11161d;
+  --code-bg: #161b22;
+  --accent: #ff7b72;
+  --accent2: #d29922;
+  --serif: "ET Book", Palatino, "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 1.05rem/1.6 var(--serif);
+}
+
+header { padding: 3rem 2rem 0; max-width: 1000px; margin: 0 auto; }
+h1 { margin: 0; font-size: 2.6rem; font-weight: 400; letter-spacing: 0; }
+h1 span { font-style: italic; color: var(--accent); }
+.tagline {
+  color: var(--muted); margin: 0.5rem 0 2rem;
+  font-style: italic; font-size: 1.15rem; max-width: 42rem;
+}
+.tagline a { color: inherit; }
+
+a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+a:hover { color: var(--accent); }
+
+/* tabs */
+#tabs { display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: baseline; border-bottom: 1px solid var(--line); padding-bottom: 0.6rem; }
+#tabs button {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font: italic 1.05rem var(--serif); color: var(--muted);
+}
+#tabs button:hover { color: var(--ink); }
+#tabs button.active { color: var(--accent); font-style: normal; }
+
+main { max-width: 1000px; margin: 0 auto; padding: 1.75rem 2rem; }
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* controls */
+.controls {
+  display: flex; flex-wrap: wrap; gap: 1.1rem; align-items: end;
+  margin-bottom: 1.5rem;
+}
+.controls label {
+  display: flex; flex-direction: column; gap: 0.3rem;
+  font-size: 0.8rem; font-style: italic; color: var(--muted);
+}
+select, input[type="text"], input[type="number"] {
+  background: var(--bg); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 3px;
+  padding: 0.4rem 0.55rem; font: 0.95rem var(--serif);
+}
+select:focus, input:focus { outline: none; border-color: var(--faint); }
+input[type="file"] { color: var(--muted); font: 0.9rem var(--serif); }
+.controls label.check { flex-direction: row; align-items: center; font-size: 0.9rem; }
+select.inline { margin-left: 0.75rem; font-size: 0.8rem; padding: 0.15rem 0.35rem; }
+
+/* buttons */
+button.play, #prog-midi, #midi-download, #midi-pdf {
+  background: none; border: 1px solid var(--accent); color: var(--accent);
+  border-radius: 3px; padding: 0.45rem 1rem;
+  font: 0.95rem var(--serif); cursor: pointer;
+}
+button.play:hover, #midi-pdf:hover { background: var(--accent); color: var(--bg); }
+#prog-midi, #midi-download {
+  border-color: var(--ink); color: var(--ink);
+}
+#prog-midi:hover, #midi-download:hover { background: var(--ink); color: var(--bg); }
+button:disabled { opacity: 0.45; cursor: wait; }
+
+/* cards */
+.results { display: flex; flex-wrap: wrap; gap: 1.25rem; }
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 4px;
+  padding: 1.25rem 1.5rem; flex: 0 1 auto; min-width: 280px;
+}
+.card.wide { flex: 1 1 100%; }
+.card h3 { margin: 0 0 0.85rem; font-size: 1.2rem; font-weight: 400; }
+.card h3 small {
+  color: var(--faint); font-weight: 400;
+  font-family: var(--mono); font-size: 0.7rem; margin-left: 0.6rem;
+}
+.card h4 {
+  margin: 1.1rem 0 0.45rem; font-size: 0.95rem;
+  font-weight: 400; font-style: italic; color: var(--muted);
+}
+
+pre {
+  font-family: var(--mono); font-size: 0.82rem; line-height: 1.45;
+  background: var(--code-bg); border: 1px solid var(--line); border-radius: 3px;
+  padding: 0.9rem 1rem; overflow: auto; white-space: pre; margin: 0;
+  max-height: 420px;
+}
+
+.tones { color: var(--muted); font-family: var(--mono); font-size: 0.85rem; }
+.error { color: var(--accent); min-height: 1.2em; font-style: italic; }
+.hint { color: var(--faint); font-size: 0.85rem; font-style: italic; }
+.hidden { display: none !important; }
+
+/* chord diagram */
+#chord-diagram { display: block; margin: 0 auto; }
+.diag-nut { fill: var(--ink); }
+.diag-fret { stroke: var(--line); }
+.diag-string { stroke: var(--faint); }
+.diag-dot { fill: var(--ink); }
+.diag-open { stroke: var(--accent); }
+.diag-mute { fill: var(--accent); }
+.diag-out { fill: var(--accent2); }
+.diag-label { fill: var(--muted); font-family: var(--mono); }
+svg text { font-family: var(--mono); }
+
+.fret-nav { display: flex; align-items: center; justify-content: center; gap: 0.6rem; margin: 0.25rem 0; }
+.fret-nav button {
+  background: none; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 3px; width: 26px; height: 26px; cursor: pointer; font-size: 0.95rem; line-height: 1;
+}
+.fret-nav button:hover { color: var(--ink); border-color: var(--faint); }
+.fret-nav span { font-family: var(--mono); color: var(--faint); font-size: 0.8rem; min-width: 3ch; text-align: center; }
+.custom-note { color: var(--accent2); font-weight: 400; font-style: italic; font-size: 0.8rem; }
+
+/* note pills */
+.note-row { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; }
+.note-pill {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 999px;
+  padding: 0.25rem 0.8rem; font-family: var(--mono); font-size: 0.85rem;
+  display: inline-flex; align-items: center; gap: 0.35rem;
+}
+.note-pill.tonic { border-color: var(--accent); color: var(--accent); }
+.note-pill small { color: var(--faint); }
+
+/* piano */
+#scale-piano { margin-top: 1.1rem; position: relative; height: 110px; }
+.white-key, .black-key { position: absolute; border-radius: 0 0 3px 3px; border: 1px solid #000; }
+.white-key { width: 36px; height: 110px; background: #e8e8e2; z-index: 1; }
+.black-key { width: 22px; height: 66px; background: #16181f; border-color: var(--faint); z-index: 2; }
+.white-key.lit { background: var(--accent); border-color: var(--accent); }
+.black-key.lit { background: var(--accent); border-color: var(--accent); }
+
+/* key table */
+#key-table { border-collapse: collapse; width: 100%; font-family: var(--mono); }
+#key-table th, #key-table td {
+  border: 1px solid var(--line); padding: 0.5rem 0.4rem; text-align: center; font-size: 0.85rem;
+}
+#key-table th { color: var(--accent2); font-weight: 400; }
+
+/* progression cards */
+.prog-row { display: flex; flex-wrap: wrap; gap: 1.25rem; }
+.prog-chord { text-align: center; }
+.prog-chord .numeral { color: var(--accent2); font-family: var(--mono); font-size: 0.85rem; }
+.prog-chord svg { display: block; }
+.prog-chord .sym { font-weight: bold; margin: 0.2rem 0; }
+
+/* subtabs */
+.subtabs { display: flex; gap: 0.4rem; margin: 1rem 0 0.75rem; }
+.subtabs button {
+  background: none; border: 1px solid var(--line); color: var(--muted);
+  border-radius: 3px; padding: 0.3rem 0.75rem; cursor: pointer; font: 0.85rem var(--serif);
+}
+.subtabs button.active { color: var(--accent); border-color: var(--accent); }
+
+#midi-download, #midi-pdf { margin-top: 0.85rem; margin-right: 0.5rem; }
+
+/* chord lab */
+table.kv { font-family: var(--mono); font-size: 0.82rem; border-collapse: collapse; }
+table.kv td { padding: 0.28rem 0.85rem 0.28rem 0; vertical-align: top; }
+table.kv td:first-child { color: var(--muted); font-style: normal; }
+.voicing-row { display: flex; align-items: center; gap: 0.6rem; margin: 0.4rem 0; }
+.voicing-label { min-width: 11rem; }
+button.mini-play {
+  background: none; border: 1px solid var(--accent); color: var(--accent);
+  border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 0.6rem;
+  flex: none; line-height: 1;
+}
+button.mini-play:hover { background: var(--accent); color: var(--bg); }
+button.mini-play.wide-play {
+  border-radius: 999px; width: auto; height: auto;
+  padding: 0.15rem 0.7rem; font-size: 0.7rem; margin-left: 0.6rem; vertical-align: middle;
+}
+
+#sound-wrap {
+  margin-left: auto; color: var(--faint); display: flex; align-items: baseline; gap: 0.4rem;
+  font-size: 1rem;
+}
+#sound-wrap select { font-size: 0.85rem; padding: 0.2rem 0.4rem; }
+
+/* tuner */
+.tuner-display { text-align: center; margin: 1rem 0 1.5rem; }
+.tuner-note { font-size: 4.5rem; line-height: 1.1; font-family: var(--serif); }
+.tuner-freq { color: var(--muted); font-family: var(--mono); font-size: 0.9rem; margin-bottom: 1.25rem; }
+.tuner-gauge { max-width: 480px; margin: 0 auto; }
+.tuner-scale {
+  display: flex; justify-content: space-between;
+  font-family: var(--mono); font-size: 0.75rem; color: var(--faint); margin-bottom: 0.3rem;
+}
+.tuner-track {
+  position: relative; height: 14px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--code-bg);
+}
+.tuner-center {
+  position: absolute; left: 50%; top: -4px; bottom: -4px; width: 1px;
+  background: var(--faint);
+}
+.tuner-needle {
+  position: absolute; left: 50%; top: -6px; width: 4px; height: 26px;
+  background: var(--accent); border-radius: 2px; transform: translateX(-50%);
+  transition: left 0.08s linear, background 0.15s; /* readings arrive 20×/sec */
+}
+.tuner-needle.in-tune { background: #3fb950; }
+.tuner-verdict { margin-top: 0.6rem; font-style: italic; color: var(--muted); min-height: 1.4em; }
+
+/* about page */
+.prose { max-width: 48rem; font-size: 1.2rem; }
+.prose h3 { font-weight: 400; font-size: 1.5rem; margin: 1.75rem 0 0.6rem; }
+.prose p, .prose li { line-height: 1.7; }
+.prose ul { padding-left: 1.4rem; }
+.prose li { margin: 0.45rem 0; }
+.prose pre { margin: 0.75rem 0; }
+
+footer {
+  max-width: 1000px; margin: 0 auto; padding: 1.5rem 2rem 2.5rem;
+  color: var(--muted); font-size: 0.9rem; font-style: italic;
+  border-top: 1px solid var(--line);
+}

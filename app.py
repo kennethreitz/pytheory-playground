@@ -1,0 +1,847 @@
+"""PyTheory Playground — interactive showcase backed by real pytheory code."""
+
+import io
+import os
+import tempfile
+import wave
+
+import numpy as np
+import responder
+from pytheory import (
+    CHARTS,
+    Chord,
+    Fretboard,
+    Key,
+    PROGRESSIONS,
+    SYSTEMS,
+    Score,
+    Tone,
+    TonedScale,
+    render_score,
+    save_midi,
+)
+from pytheory import INSTRUMENTS as SOUND_PRESETS
+
+SAMPLE_RATE = 44100
+
+# Fretted instruments that make sense for chord charts.
+INSTRUMENTS = ["guitar", "twelve_string", "ukulele", "banjo", "mandolin", "bass"]
+
+ROOTS = ["A", "Bb", "B", "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab"]
+QUALITIES = ["", "m", "5", "7", "9", "dim", "m6", "m7", "m9", "maj7", "maj9"]
+
+# Curated synth presets for the playback sound picker.
+SOUNDS = [s for s in (
+    "piano", "electric_piano", "organ", "harpsichord", "music_box",
+    "acoustic_guitar", "electric_guitar", "violin", "cello", "flute",
+    "trumpet", "marimba", "vibraphone", "synth_lead", "synth_pad",
+    "sitar", "koto", "theremin", "choir",
+) if s in SOUND_PRESETS]
+
+
+def _system_meta():
+    """Tonics and scale names for every tonal system pytheory ships."""
+    out = {}
+    for name, system in SYSTEMS.items():
+        try:
+            tonics = []
+            for t in system.tones:
+                n = t[0] if isinstance(t, tuple) else getattr(t, "name", str(t))
+                if n not in tonics:
+                    tonics.append(n)
+            scales = list(TonedScale(tonic=f"{tonics[0]}4", system=name).scales)
+            out[name] = {
+                "tonics": tonics,
+                "scales": scales,
+                # 12-TET systems using western note names (piano/fretboard views apply)
+                "western_notes": name in ("western", "japanese", "blues"),
+            }
+        except Exception:
+            continue
+    return out
+
+
+SYSTEM_META = _system_meta()
+SCALE_NAMES = SYSTEM_META["western"]["scales"]
+
+api = responder.API(static_dir="static", static_route="/static")
+
+
+def wav_bytes(audio: np.ndarray) -> bytes:
+    """Encode a stereo float numpy array from render_score() as a WAV file."""
+    clipped = np.clip(audio, -1.0, 1.0)
+    pcm = (clipped * 32767).astype(np.int16)
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(pcm.shape[1] if pcm.ndim == 2 else 1)
+        w.setsampwidth(2)
+        w.setframerate(SAMPLE_RATE)
+        w.writeframes(pcm.tobytes())
+    return buf.getvalue()
+
+
+def score_for(items, *, bpm=110, duration=1.0, synth="sine", strum=False,
+              sound=None, system="western") -> Score:
+    """Build a one-part Score from a list of Tones/Chords."""
+    score = Score(bpm=bpm, system=system)
+    kwargs = dict(volume=0.6, reverb=0.15,
+                  fretboard=Fretboard.guitar() if strum else None)
+    if sound:
+        part = score.part("playground", instrument=sound, **kwargs)
+    else:
+        part = score.part("playground", synth=synth, **kwargs)
+    for item in items:
+        if strum and hasattr(item, "symbol"):
+            try:
+                part.strum(item.symbol, duration)
+                continue
+            except Exception:
+                pass
+        part.add(item, duration)
+    return score
+
+
+def _sound(req):
+    s = req.params.get("sound", "").strip()
+    return s if s in SOUNDS else None
+
+
+def send_wav(resp, audio: np.ndarray):
+    resp.content = wav_bytes(audio)
+    resp.headers["Content-Type"] = "audio/wav"
+    resp.headers["Cache-Control"] = "max-age=3600"
+
+
+def error(resp, status, message):
+    resp.status_code = status
+    resp.media = {"error": message}
+
+
+@api.route("/")
+async def index(req, resp):
+    with open(os.path.join("static", "index.html")) as f:
+        resp.html = f.read()
+
+
+@api.route("/api/meta")
+async def meta(req, resp):
+    resp.media = {
+        "instruments": INSTRUMENTS,
+        "roots": ROOTS,
+        "qualities": QUALITIES,
+        "chords": list(CHARTS["western"].keys()),
+        "tunings": list(Fretboard.TUNINGS.keys()),
+        "scales": SCALE_NAMES,
+        "systems": SYSTEM_META,
+        "sounds": SOUNDS,
+        "progressions": {name: list(numerals) for name, numerals in PROGRESSIONS.items()},
+        "version": __import__("pytheory").__version__,
+    }
+
+
+# --- Guitar tab / chords -------------------------------------------------
+
+def _fretboard(name: str, tuning: str = "", capo: int = 0) -> Fretboard:
+    if name not in INSTRUMENTS:
+        raise KeyError(name)
+    tuning = (tuning or "").strip()
+    if not tuning or tuning == "standard":
+        fretboard = getattr(Fretboard, name)()
+    elif (named := tuning.lower().replace("_", " ")) in Fretboard.TUNINGS:
+        if name != "guitar":
+            raise ValueError(f"Named tuning '{named}' is a guitar tuning")
+        fretboard = Fretboard.guitar(tuning=named)
+    else:
+        # Custom tuning: comma-separated open-string tones, low to high (e.g. D2,A2,D3,G3,A3,D4).
+        try:
+            tones = [Tone.from_string(s.strip(), system="western")
+                     for s in tuning.split(",") if s.strip()]
+        except Exception as e:
+            raise ValueError(f"Bad tuning '{tuning}': {e}") from e
+        if len(tones) < 2:
+            raise ValueError("A tuning needs at least two strings, e.g. D2,A2,D3,G3,A3,D4")
+        fretboard = Fretboard(tones=tones)
+    if not 0 <= capo <= 12:
+        raise ValueError("Capo must be between 0 and 12")
+    return fretboard.capo(capo) if capo else fretboard
+
+
+def _fretboard_params(req) -> Fretboard:
+    return _fretboard(
+        req.params.get("instrument", "guitar"),
+        req.params.get("tuning", ""),
+        int(req.params.get("capo", "0") or 0),
+    )
+
+
+@api.route("/api/chord")
+async def chord_view(req, resp):
+    name = req.params.get("name", "C")
+    instrument = req.params.get("instrument", "guitar")
+    try:
+        fretboard = _fretboard_params(req)
+    except KeyError:
+        return error(resp, 400, f"Unknown instrument: {instrument}")
+    except ValueError as e:
+        return error(resp, 400, str(e))
+    named = CHARTS["western"].get(name)
+    if named is None:
+        return error(resp, 404, f"No chart for chord: {name}")
+    try:
+        fingering = named.fingering(fretboard=fretboard)
+        tab = named.tab(fretboard=fretboard)
+    except Exception as e:
+        return error(resp, 422, f"Couldn't voice {name} on {instrument}: {e}")
+    chord = Chord.from_name(name)
+    resp.media = {
+        "name": name,
+        "instrument": instrument,
+        "tab": tab,
+        "positions": list(fingering.positions),  # low string first; null = muted
+        "strings": list(fingering.string_names),
+        "tones": [t.name for t in named.acceptable_tones],
+        "pitches": [str(t) for t in chord.tones],
+    }
+
+
+@api.route("/api/chord/audio")
+async def chord_audio(req, resp):
+    name = req.params.get("name", "C")
+    try:
+        chord = Chord.from_name(name)
+    except Exception:
+        return error(resp, 404, f"Unknown chord: {name}")
+    score = score_for([chord], bpm=60, duration=2.0, strum=True, sound=_sound(req))
+    send_wav(resp, render_score(score))
+
+
+@api.route("/api/voicing/audio")
+async def voicing_audio(req, resp):
+    """Play an exact set of pitches (e.g. a custom fingering), strummed low to high."""
+    raw = req.params.get("tones", "")
+    names = [n.strip() for n in raw.split(",") if n.strip()]
+    if not names or len(names) > 12:
+        return error(resp, 400, "Pass 1-12 tones, e.g. tones=C3,E3,G3,C4")
+    try:
+        tones = sorted((Tone.from_string(n, system="western") for n in names),
+                       key=lambda t: t.midi)
+        chord = Chord(tones=tones)
+    except Exception as e:
+        return error(resp, 422, f"Couldn't parse tones: {e}")
+    score = score_for([chord], bpm=60, duration=2.0, sound=_sound(req))
+    send_wav(resp, render_score(score))
+
+
+@api.route("/api/chord/lab")
+async def chord_lab(req, resp):
+    """Deep analysis of a chord: voicings, set theory, tension, substitutions."""
+    symbol = req.params.get("name", "Cmaj7")
+    try:
+        chord = Chord.from_name(symbol)
+    except Exception as e:
+        return error(resp, 404, f"Couldn't parse chord '{symbol}': {e}")
+
+    def tone_strs(c):
+        return [str(t) for t in c.tones]
+
+    voicings = [{"label": "root position", "tones": tone_strs(chord)}]
+    for i in range(1, min(len(chord.tones), 4)):
+        try:
+            inv = chord.inversion(i)
+            voicings.append({"label": f"inversion {i} ({inv.slash_name})",
+                             "tones": tone_strs(inv)})
+        except Exception:
+            pass
+    for label, fn in (("drop 2", chord.drop2), ("drop 3", chord.drop3),
+                      ("open voicing", chord.open_voicing)):
+        try:
+            voicings.append({"label": label, "tones": tone_strs(fn())})
+        except Exception:
+            pass
+
+    try:
+        tritone_sub = chord.tritone_sub().symbol
+    except Exception:
+        tritone_sub = None
+    try:
+        extensions = [str(t) for t in chord.extensions()]
+    except Exception:
+        extensions = []
+
+    resp.media = {
+        "symbol": chord.symbol,
+        "tones": tone_strs(chord),
+        "intervals": list(chord.intervals),
+        "pitch_classes": sorted(chord.pitch_classes),
+        "forte_number": chord.forte_number,
+        "figured_bass": chord.figured_bass,
+        "tension": chord.tension,
+        "dissonance": round(chord.dissonance, 2),
+        "voicings": voicings,
+        "tritone_sub": tritone_sub,
+        "extensions": extensions,
+    }
+
+
+@api.route("/api/symbols/audio")
+async def symbols_audio(req, resp):
+    """Play a comma-separated list of chord symbols in sequence."""
+    symbols = [s.strip() for s in req.params.get("symbols", "").split(",") if s.strip()]
+    if not symbols or len(symbols) > 16:
+        return error(resp, 400, "Pass 1-16 chord symbols, e.g. symbols=C,Am,F,G")
+    try:
+        chords = [Chord.from_name(s) for s in symbols]
+    except Exception as e:
+        return error(resp, 422, f"Couldn't parse chords: {e}")
+    score = score_for(chords, bpm=80, duration=2.0, strum=True, sound=_sound(req))
+    send_wav(resp, render_score(score))
+
+
+# --- Scales ---------------------------------------------------------------
+
+def _toned_scale(req):
+    system = req.params.get("system", "western")
+    if system not in SYSTEM_META:
+        raise ValueError(f"Unknown system: {system}")
+    tonic = req.params.get("tonic", SYSTEM_META[system]["tonics"][0])
+    octave = int(req.params.get("octave", "4"))
+    name = req.params.get("name", "major")
+    if name not in SYSTEM_META[system]["scales"]:
+        raise ValueError(f"Unknown scale for {system}: {name}")
+    return TonedScale(tonic=f"{tonic}{octave}", system=system)[name], name, system
+
+
+@api.route("/api/scale")
+async def scale_view(req, resp):
+    try:
+        scale, name, system = _toned_scale(req)
+    except ValueError as e:
+        return error(resp, 400, str(e))
+    except Exception as e:
+        return error(resp, 400, f"Bad scale request: {e}")
+    harmonized = []
+    if name not in ("chromatic",):
+        try:
+            harmonized = [c.symbol for c in scale.harmonize() if c is not None and c.symbol]
+        except Exception:
+            harmonized = []
+    resp.media = {
+        "name": name,
+        "system": system,
+        "tones": [str(t) for t in scale.tones],
+        "note_names": list(scale.note_names),
+        "harmonized": harmonized,
+    }
+
+
+@api.route("/api/scale/fretboard")
+async def scale_fretboard(req, resp):
+    instrument = req.params.get("instrument", "guitar")
+    frets = min(int(req.params.get("frets", "12")), 24)
+    try:
+        fretboard = _fretboard_params(req)
+    except KeyError:
+        return error(resp, 400, f"Unknown instrument: {instrument}")
+    except ValueError as e:
+        return error(resp, 400, str(e))
+    try:
+        scale, name, system = _toned_scale(req)
+    except Exception as e:
+        return error(resp, 400, f"Bad scale request: {e}")
+    resp.media = {"diagram": fretboard.scale_diagram(scale, frets=frets),
+                  "instrument": instrument, "name": name}
+
+
+@api.route("/api/scale/audio")
+async def scale_audio(req, resp):
+    try:
+        scale, _, system = _toned_scale(req)
+    except Exception as e:
+        return error(resp, 400, f"Bad scale request: {e}")
+    score = score_for(list(scale.tones), bpm=140, duration=0.5, sound=_sound(req), system=system)
+    send_wav(resp, render_score(score))
+
+
+# --- Keys & progressions ---------------------------------------------------
+
+def _key(req) -> Key:
+    tonic = req.params.get("tonic", "C")
+    mode = req.params.get("mode", "major")
+    return Key(tonic, mode=mode)
+
+
+@api.route("/api/key")
+async def key_view(req, resp):
+    try:
+        key = _key(req)
+    except Exception as e:
+        return error(resp, 400, f"Bad key: {e}")
+    resp.media = {
+        "tonic": key.tonic_name,
+        "mode": key.mode,
+        "notes": list(key.note_names),
+        "chords": list(key.chords),
+        "seventh_chords": list(key.seventh_chords),
+        "signature": key.signature,
+        "relative": str(key.relative),
+    }
+
+
+@api.route("/api/key/explore")
+async def key_explore(req, resp):
+    """Beyond the diatonic set: borrowed chords, secondary dominants, what's next."""
+    try:
+        key = _key(req)
+    except Exception as e:
+        return error(resp, 400, f"Bad key: {e}")
+    secondary = []
+    for degree in range(2, 7):
+        try:
+            secondary.append({"degree": degree,
+                              "symbol": key.secondary_dominant(degree).symbol})
+        except Exception:
+            pass
+    suggestions = []
+    after = req.params.get("after", "").strip()
+    if after:
+        try:
+            suggestions = [c.symbol for c in key.suggest_next(Chord.from_name(after))]
+        except Exception:
+            pass
+    try:
+        borrowed = list(key.borrowed_chords)
+    except Exception:
+        borrowed = []
+    resp.media = {
+        "key": f"{key.tonic_name} {key.mode}",
+        "borrowed": borrowed,
+        "secondary_dominants": secondary,
+        "after": after or None,
+        "suggestions": suggestions,
+    }
+
+
+@api.route("/api/key/modulate")
+async def key_modulate(req, resp):
+    """Plan a modulation: chord path and pivot chords between two keys."""
+    try:
+        key = _key(req)
+        target = Key(req.params.get("to_tonic", "G"),
+                     mode=req.params.get("to_mode", "major"))
+    except Exception as e:
+        return error(resp, 400, f"Bad key: {e}")
+    try:
+        path = [c.symbol for c in key.modulation_path(target)]
+    except Exception:
+        path = []
+    try:
+        pivots = list(key.pivot_chords(target))
+    except Exception:
+        pivots = []
+    resp.media = {
+        "from": f"{key.tonic_name} {key.mode}",
+        "to": f"{target.tonic_name} {target.mode}",
+        "path": path,
+        "pivot_chords": pivots,
+    }
+
+
+def _progression_chords(req):
+    key = _key(req)
+    numerals_param = req.params.get("numerals", "I-V-vi-IV")
+    numerals = PROGRESSIONS.get(numerals_param, tuple(numerals_param.split("-")))
+    return key, list(numerals), key.progression(*numerals)
+
+
+@api.route("/api/progression")
+async def progression_view(req, resp):
+    try:
+        key, numerals, chords = _progression_chords(req)
+    except Exception as e:
+        return error(resp, 400, f"Bad progression: {e}")
+    fretboard = Fretboard.guitar()
+    out = []
+    for numeral, chord in zip(numerals, chords):
+        symbol = chord.symbol
+        entry = {"numeral": numeral, "symbol": symbol, "tab": None, "positions": None}
+        named = CHARTS["western"].get(symbol)
+        if named is not None:
+            try:
+                fingering = named.fingering(fretboard=fretboard)
+                entry["tab"] = named.tab(fretboard=fretboard)
+                entry["positions"] = list(fingering.positions)
+                entry["strings"] = list(fingering.string_names)
+            except Exception:
+                pass
+        out.append(entry)
+    resp.media = {"key": f"{key.tonic_name} {key.mode}", "chords": out}
+
+
+@api.route("/api/progression/audio")
+async def progression_audio(req, resp):
+    try:
+        _, _, chords = _progression_chords(req)
+    except Exception as e:
+        return error(resp, 400, f"Bad progression: {e}")
+    score = score_for(chords, bpm=80, duration=2.0, strum=True, sound=_sound(req))
+    send_wav(resp, render_score(score))
+
+
+@api.route("/api/progression/midi")
+async def progression_midi(req, resp):
+    try:
+        _, _, chords = _progression_chords(req)
+    except Exception as e:
+        return error(resp, 400, f"Bad progression: {e}")
+    with tempfile.NamedTemporaryFile(suffix=".mid", delete=False) as f:
+        path = f.name
+    try:
+        save_midi(chords, path, t=1000)
+        with open(path, "rb") as f:
+            resp.content = f.read()
+    finally:
+        os.unlink(path)
+    resp.headers["Content-Type"] = "audio/midi"
+    resp.headers["Content-Disposition"] = "attachment; filename=progression.mid"
+
+
+# --- Tools: identify / analyze / detect -------------------------------------
+
+@api.route("/api/tools/identify")
+async def identify_chord(req, resp):
+    """Name the chord for a set of fret positions (low string first; x = muted)."""
+    from pytheory.charts import Fingering
+
+    instrument = req.params.get("instrument", "guitar")
+    raw = req.params.get("frets", "")
+    try:
+        fretboard = _fretboard_params(req)
+    except KeyError:
+        return error(resp, 400, f"Unknown instrument: {instrument}")
+    except ValueError as e:
+        return error(resp, 400, str(e))
+    try:
+        positions = [None if p.strip().lower() in ("x", "") else int(p)
+                     for p in raw.split(",")]
+    except ValueError:
+        return error(resp, 400, "Frets must be numbers or 'x', e.g. x,3,2,0,1,0")
+    open_tones = list(fretboard.tones)  # low string first
+    if len(positions) != len(open_tones):
+        return error(resp, 400,
+                     f"{instrument} has {len(open_tones)} strings; got {len(positions)} positions")
+    names = [t.name for t in open_tones]
+    # Fingering's identify() expects canonical high-to-low order.
+    fingering = Fingering(tuple(reversed(positions)), tuple(reversed(names)),
+                          fretboard=fretboard, high_to_low=True)
+    try:
+        chord = fingering.to_chord()
+    except Exception:
+        chord = None
+    name = fingering.identify()
+    symbol = getattr(chord, "symbol", None)
+    # Compose the tab low-string-first, matching the chord panel's layout.
+    label = name or symbol or "?"
+    tab = "\n".join([label] + [f"{nm}|--{'x' if p is None else p}--"
+                               for nm, p in zip(names, positions)])
+    resp.media = {
+        "name": name,
+        "symbol": symbol,
+        "tones": [str(t) for t in chord.tones] if chord is not None else [],
+        "tab": tab,
+    }
+
+
+@api.route("/api/tools/analyze")
+async def analyze(req, resp):
+    """Roman-numeral analysis of a chord progression in a key."""
+    from pytheory import analyze_progression
+
+    key = req.params.get("key", "C")
+    mode = req.params.get("mode", "major")
+    raw = req.params.get("chords", "")
+    symbols = [s.strip() for s in raw.split(",") if s.strip()]
+    if not symbols:
+        return error(resp, 400, "Pass chords as a comma-separated list, e.g. C,Am,F,G")
+    try:
+        chords = [Chord.from_name(s) for s in symbols]
+    except Exception as e:
+        return error(resp, 422, f"Couldn't parse chords: {e}")
+    numerals = analyze_progression(chords, key=key, mode=mode)
+    resp.media = {
+        "key": f"{key} {mode}",
+        "analysis": [{"symbol": s, "numeral": n} for s, n in zip(symbols, numerals)],
+    }
+
+
+@api.route("/api/tools/detect-key")
+async def detect_key(req, resp):
+    """Guess the key from a set of note names."""
+    raw = req.params.get("notes", "")
+    notes = [n.strip() for n in raw.split(",") if n.strip()]
+    if not notes:
+        return error(resp, 400, "Pass notes as a comma-separated list, e.g. C,E,G,B")
+    try:
+        key = Key.detect(*notes)
+    except Exception as e:
+        return error(resp, 422, f"Couldn't detect key: {e}")
+    if key is None:
+        resp.media = {"key": None, "message": "No clear key match."}
+        return
+    resp.media = {
+        "key": str(key),
+        "tonic": key.tonic_name,
+        "mode": key.mode,
+        "chords": list(key.chords),
+        "signature": key.signature,
+        "relative": str(key.relative),
+    }
+
+
+# --- Tools: MIDI import / export -------------------------------------------
+
+def _detect_score_key(score):
+    """Guess the key of a Score from every note name it contains."""
+    names = set()
+    for part in score.parts.values():
+        for note in getattr(part, "notes", None) or getattr(part, "_notes", []):
+            tone = getattr(note, "tone", None)
+            if tone is None:
+                continue
+            for t in (tone.tones if hasattr(tone, "tones") else [tone]):
+                if getattr(t, "name", None):
+                    names.add(t.name)
+    if not names:
+        return None
+    try:
+        return Key.detect(*names)
+    except Exception:
+        return None
+
+
+@api.route("/api/tools/midi-convert")
+async def midi_convert(req, resp):
+    """POST raw MIDI bytes; returns LilyPond, ABC, MusicXML, and ASCII tab renderings."""
+    body = await req.content
+    if not body:
+        return error(resp, 400, "Upload a MIDI file as the request body.")
+    title = req.params.get("title", "Imported from MIDI")
+    key = req.params.get("key", "auto")
+    mode = req.params.get("mode", "major")
+    with tempfile.NamedTemporaryFile(suffix=".mid", delete=False) as f:
+        f.write(body)
+        path = f.name
+    try:
+        score = Score.from_midi(path)
+    except Exception as e:
+        os.unlink(path)
+        return error(resp, 422, f"Couldn't parse MIDI file: {e}")
+    os.unlink(path)
+
+    resp.media = _score_outputs(score, title, key, mode)
+
+
+def _score_outputs(score, title, key="auto", mode="major"):
+    """Render a Score to every export format, auto-detecting the key if asked."""
+    detected = None
+    if key in ("auto", ""):
+        detected = _detect_score_key(score)
+        key = detected.tonic_name if detected else "C"
+        mode = detected.mode if detected else "major"
+
+    out = {"detected_key": str(detected) if detected else None,
+           "key": f"{key} {mode}"}
+    try:
+        out["lilypond"] = score.to_lilypond(title=title, key=key, mode=mode)
+    except Exception as e:
+        out["lilypond"] = f"LilyPond export failed: {e}"
+    try:
+        out["abc"] = score.to_abc(title=title, key=key)
+    except Exception as e:
+        out["abc"] = f"ABC export failed: {e}"
+    try:
+        out["tab"] = score.to_tab()
+    except Exception as e:
+        out["tab"] = f"Tab export failed: {e}"
+    try:
+        out["musicxml"] = score.to_musicxml(title=title)
+    except Exception as e:
+        out["musicxml"] = f"MusicXML export failed: {e}"
+    return out
+
+
+@api.route("/api/tools/audio-convert")
+async def audio_convert(req, resp):
+    """POST a recording (wav/m4a/mp3); transcribe it and return score exports.
+
+    Monophonic per pass (Score.from_wav, YIN pitch tracking) — hum a melody,
+    whistle a hook, or record a bass line.
+    """
+    import base64
+
+    body = await req.content
+    if not body:
+        return error(resp, 400, "Upload an audio file as the request body.")
+    ext = os.path.splitext(req.params.get("filename", ""))[1].lower() or ".wav"
+    title = req.params.get("title", "Transcribed audio")
+    kwargs = {}
+    if req.params.get("quantize"):
+        kwargs["quantize"] = float(req.params["quantize"])
+    if req.params.get("bpm"):
+        kwargs["bpm"] = float(req.params["bpm"])
+    if req.params.get("split") in ("1", "true", "on"):
+        kwargs["split"] = True
+
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as f:
+        f.write(body)
+        path = f.name
+    try:
+        score = Score.from_wav(path, **kwargs)
+    except Exception as e:
+        return error(resp, 422, f"Couldn't transcribe audio: {e}")
+    finally:
+        os.unlink(path)
+
+    out = _score_outputs(score, title)
+    out["bpm"] = score.bpm
+    with tempfile.NamedTemporaryFile(suffix=".mid", delete=False) as f:
+        midi_path = f.name
+    try:
+        score.save_midi(midi_path)
+        with open(midi_path, "rb") as f:
+            out["midi_b64"] = base64.b64encode(f.read()).decode()
+    except Exception:
+        out["midi_b64"] = None
+    finally:
+        os.unlink(midi_path)
+    resp.media = out
+
+
+@api.route("/api/tuner/strings")
+async def tuner_strings(req, resp):
+    """Open-string reference tones for the tuner (honors tuning + capo)."""
+    instrument = req.params.get("instrument", "guitar")
+    try:
+        fretboard = _fretboard_params(req)
+    except KeyError:
+        return error(resp, 400, f"Unknown instrument: {instrument}")
+    except ValueError as e:
+        return error(resp, 400, str(e))
+    resp.media = {"strings": [
+        {"label": str(t), "frequency": round(t.frequency, 2)}
+        for t in fretboard.tones  # low string first
+    ]}
+
+
+# pytheory's native tuner (mic on the server, SSE stream on :8123).
+_pytuner = {"tuner": None, "serving": False}
+
+
+@api.route("/api/tuner/start")
+async def tuner_native_start(req, resp):
+    """Start pytheory's built-in tuner and SSE server (Tuner + serve)."""
+    import threading
+
+    try:
+        from pytheory.tuner import Tuner, serve
+    except Exception as e:
+        return error(resp, 501, f"pytheory tuner unavailable: {e}")
+    try:
+        if _pytuner["tuner"] is None:
+            _pytuner["tuner"] = Tuner()
+            _pytuner["tuner"].start()
+        elif _pytuner["tuner"]._stream is None:  # restarted after stop
+            _pytuner["tuner"].start()
+    except Exception as e:
+        _pytuner["tuner"] = None
+        return error(resp, 501, f"Couldn't open the server microphone: {e}")
+    if not _pytuner["serving"]:
+        threading.Thread(target=serve, args=(_pytuner["tuner"],),
+                         kwargs={"port": 8123, "open_browser": False},
+                         daemon=True).start()
+        _pytuner["serving"] = True
+    resp.media = {"ok": True, "stream": "http://localhost:8123/stream"}
+
+
+@api.route("/api/tuner/stop")
+async def tuner_native_stop(req, resp):
+    if _pytuner["tuner"] is not None:
+        try:
+            _pytuner["tuner"].stop()
+        except Exception:
+            pass
+    resp.media = {"ok": True}
+
+
+@api.route("/api/tools/tune")
+async def tune(req, resp):
+    """Detect the pitch of a raw float32 PCM chunk (the tuner's mic loop).
+
+    YIN pitch tracking via pytheory.audio.detect_pitch; the nearest tone
+    and cents offset come from Tone.from_frequency.
+    """
+    import math
+
+    from pytheory.audio import detect_pitch
+
+    body = await req.content
+    if not body or len(body) < 8192:
+        resp.media = {"voiced": False}
+        return
+    rate = int(req.params.get("rate", "48000"))
+    samples = np.frombuffer(body, dtype=np.float32).astype(np.float64)
+    _, freqs, voiced = detect_pitch(samples, rate, fmin=55.0, fmax=1500.0)
+    # Demand a stable pitch across most of the chunk, not a single blip.
+    if not voiced.any() or voiced.mean() < 0.25:
+        resp.media = {"voiced": False}
+        return
+    system = req.params.get("system", "western")
+    if system not in SYSTEM_META:
+        return error(resp, 400, f"Unknown system: {system}")
+    freq = float(np.median(freqs[voiced]))
+    tone = Tone.from_frequency(freq, system=system)
+    cents = 1200 * math.log2(freq / tone.frequency)
+    resp.media = {
+        "voiced": True,
+        "frequency": round(freq, 2),
+        "note": tone.name,
+        "octave": getattr(tone, "octave", None),
+        "target": round(tone.frequency, 2),
+        "cents": round(cents, 1),
+        "system": system,
+    }
+
+
+@api.route("/api/tools/lilypond-pdf")
+async def lilypond_pdf(req, resp):
+    """POST LilyPond source; returns engraved PDF (requires the lilypond binary)."""
+    import shutil
+    import subprocess
+
+    if shutil.which("lilypond") is None:
+        return error(resp, 501, "lilypond binary not installed on the server")
+    body = await req.content
+    if not body:
+        return error(resp, 400, "POST LilyPond source as the request body.")
+    with tempfile.TemporaryDirectory() as tmp:
+        src = os.path.join(tmp, "score.ly")
+        with open(src, "wb") as f:
+            f.write(body)
+        try:
+            proc = subprocess.run(
+                ["lilypond", "--pdf", "-dno-point-and-click", "-o", os.path.join(tmp, "score"), src],
+                capture_output=True, text=True, timeout=60,
+            )
+        except subprocess.TimeoutExpired:
+            return error(resp, 504, "LilyPond timed out after 60s")
+        pdf = os.path.join(tmp, "score.pdf")
+        if proc.returncode != 0 or not os.path.exists(pdf):
+            tail = (proc.stderr or "").strip().splitlines()[-8:]
+            return error(resp, 422, "LilyPond failed:\n" + "\n".join(tail))
+        with open(pdf, "rb") as f:
+            resp.content = f.read()
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = "inline; filename=score.pdf"
+
+
+if __name__ == "__main__":
+    api.run(address="127.0.0.1", port=5042)
