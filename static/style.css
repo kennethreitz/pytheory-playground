@@ -40,6 +40,9 @@
 
 * { box-sizing: border-box; }
 
+/* everything is rem-based, so the root size scales the whole site */
+html { font-size: 18px; }
+
 body {
   margin: 0;
   background: var(--bg);
