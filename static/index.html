@@ -39,14 +39,6 @@
         19-TET, and a dozen other tonal systems are first-class citizens, complete with microtonal
         synthesis.</p>
 
-        <h3>Install it</h3>
-        <p class="hint">Not familiar with uv? It's the fast Python package manager —
-          <a href="https://docs.astral.sh/uv/getting-started/installation/">install it here</a>.</p>
-        <pre>$ uv add pytheory</pre>
-        <p>Then, in a REPL:</p>
-        <pre>>>> from pytheory import Fretboard, CHARTS
->>> print(CHARTS["western"]["Cmaj7"].tab(fretboard=Fretboard.guitar()))</pre>
-
         <h3>This playground</h3>
         <p>Everything on this site is computed live by pytheory on the server — no music theory is
         re-implemented in JavaScript. Each card cites the API call behind it. Explore:</p>
@@ -66,6 +58,14 @@
             recordings into notation, and convert MIDI to LilyPond (with PDF engraving), ABC,
             MusicXML, or tab.</li>
         </ul>
+
+        <h3>Install it</h3>
+        <p class="hint">Not familiar with uv? It's the fast Python package manager —
+          <a href="https://docs.astral.sh/uv/getting-started/installation/">install it here</a>.</p>
+        <pre>$ uv add pytheory</pre>
+        <p>Then, in a REPL:</p>
+        <pre>>>> from pytheory import Fretboard, CHARTS
+>>> print(CHARTS["western"]["Cmaj7"].tab(fretboard=Fretboard.guitar()))</pre>
 
         <h3>Links</h3>
         <ul>
