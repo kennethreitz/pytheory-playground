@@ -20,6 +20,7 @@
       <button data-panel="lab">Chord Lab</button>
       <button data-panel="scales">Scales</button>
       <button data-panel="keys">Keys &amp; Progressions</button>
+      <button data-panel="groove">Groove Lab</button>
       <button data-panel="tools">Tools</button>
       <label id="sound-wrap" title="Playback sound (pytheory synth presets)">&#9835;
         <select id="sound"></select>
@@ -156,6 +157,7 @@ tuner.onmessage = (e) => {
                 <div class="tuner-needle" id="tuner-needle"></div>
               </div>
               <div class="tuner-verdict" id="tuner-verdict"></div>
+              <div class="hint" id="tuner-mode"></div>
             </div>
           </div>
           <h4>Open strings <small>click to hear a reference tone</small></h4>
@@ -198,6 +200,14 @@ tuner.onmessage = (e) => {
           <h3>Substitutions <small>chord.tritone_sub() · .extensions()</small></h3>
           <p id="lab-sub"></p>
           <p id="lab-ext" class="tones"></p>
+        </div>
+        <div class="card">
+          <h3>Tuning &amp; beats <small>chord.beat_frequencies · Score(temperament=…)</small></h3>
+          <p class="hint">The same chord in four temperaments — equal splits the octave evenly,
+            just locks to pure ratios; listen for the beating.</p>
+          <div id="lab-temperaments" class="note-row"></div>
+          <h4>Beat frequencies</h4>
+          <table class="kv" id="lab-beats"></table>
         </div>
       </div>
       <p class="error" id="lab-error"></p>
@@ -293,6 +303,11 @@ tuner.onmessage = (e) => {
           </div>
         </div>
         <div class="card wide">
+          <h3>Circle of fifths <small>Key(…).signature · key.relative</small></h3>
+          <svg id="circle-fifths" viewBox="0 0 360 360" width="360" height="360"></svg>
+          <p class="hint" style="text-align:center">Click a key to explore it.</p>
+        </div>
+        <div class="card wide">
           <h3>Modulation planner <small>key.modulation_path(…) · key.pivot_chords(…)</small></h3>
           <div class="controls">
             <label>To key
@@ -308,6 +323,54 @@ tuner.onmessage = (e) => {
         </div>
       </div>
       <p class="error" id="key-error"></p>
+    </section>
+
+    <!-- ============ Groove Lab ============ -->
+    <section id="panel-groove" class="panel">
+      <div class="controls">
+        <label>Groove
+          <select id="groove-preset"></select>
+        </label>
+        <label>BPM
+          <input type="number" id="groove-bpm" value="100" min="40" max="240" style="width:5rem">
+        </label>
+        <label>Swing <span id="groove-swing-label" class="mono-val">0</span>
+          <input type="range" id="groove-swing" min="0" max="0.6" step="0.05" value="0">
+        </label>
+        <label>Bars
+          <select id="groove-repeats">
+            <option>1</option><option>2</option><option selected>4</option><option>8</option>
+          </select>
+        </label>
+        <label>Fill
+          <select id="groove-fill"></select>
+        </label>
+        <label>Fill every
+          <select id="groove-fill-every">
+            <option value="">never</option><option value="2">2 bars</option><option value="4" selected>4 bars</option>
+          </select>
+        </label>
+      </div>
+      <div class="controls">
+        <label>Backing progression
+          <select id="groove-numerals"></select>
+        </label>
+        <label>Key
+          <select id="groove-tonic"></select>
+        </label>
+        <label>Mode
+          <select id="groove-mode"><option selected>major</option><option>minor</option></select>
+        </label>
+        <button id="groove-play" class="play">&#9654; Play groove</button>
+        <button id="groove-midi">&#8681; MIDI</button>
+      </div>
+      <div class="card wide">
+        <h3>Groove Lab <small>score.drums(preset, fill=…) · Score(swing=…)</small></h3>
+        <p>One hundred drum patterns from pytheory's rhythm engine — bossa nova to blast
+          beat, dhol chaal to drum&nbsp;and&nbsp;bass — with auto-fills, swing, and an optional
+          chord backing cycled underneath. Rendered to audio server-side, exportable as MIDI.</p>
+        <p class="hint" id="groove-status"></p>
+      </div>
     </section>
 
     <!-- ============ Tools ============ -->

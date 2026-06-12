@@ -35,15 +35,21 @@ $ docker run -p 5042:5042 pytheory-playground
   Falls back to browser-mic capture when the server has no microphone (Docker).
 - **Chord Lab** — voicings (inversions, drop 2/3, open), interval structure,
   pitch-class set theory (Forte numbers), tension/dissonance scoring, tritone
-  substitutions, and available extensions — every voicing playable.
+  substitutions, available extensions, beat frequencies, and the same chord
+  playable in four temperaments (equal, pythagorean, meantone, just) — listen
+  for the beating disappear under just intonation.
 - **Scales** — every scale and mode across sixteen tonal systems (western,
   Indian rāgas, Arabic maqāmāt, gamelan slendro/pelog, 19-TET, Bohlen–Pierce…)
   with microtonal audio, harmonization, a piano view, and per-instrument
   fretboard diagrams.
 - **Keys & Progressions** — diatonic triads/sevenths, borrowed chords,
   secondary dominants, chord suggestions, named progressions with per-chord
-  diagrams, a modulation planner with pivot chords, audio playback, and MIDI
-  download.
+  diagrams, an interactive circle of fifths, a modulation planner with pivot
+  chords, audio playback, and MIDI download.
+- **Groove Lab** — one hundred drum patterns from the rhythm engine (bossa
+  nova, dhol chaal, drum and bass, blast beat…) with auto-fills, a swing
+  control, optional chord backing in any key, server-rendered audio, and
+  MIDI export.
 - **Tools**
   - *Chord identifier* — fret positions (any instrument/tuning) → chord name.
   - *Progression analyzer* — chord symbols → Roman-numeral analysis.
@@ -71,6 +77,8 @@ Everything the UI does is a plain JSON/WAV/PDF endpoint:
 | `GET /api/key?tonic=E&mode=minor` | Diatonic chords, signature, relative |
 | `GET /api/key/explore?after=F` | Borrowed chords, secondary dominants, suggestions |
 | `GET /api/key/modulate?to_tonic=Eb` | Modulation path + pivot chords |
+| `GET /api/circle` | Circle of fifths with signatures + relatives |
+| `GET /api/groove/audio?preset=funk&swing=0.15` (+`/midi`) | Drum groove WAV / MIDI |
 | `GET /api/progression` (+`/audio`, `/midi`) | Chords with tabs / WAV / MIDI |
 | `GET /api/tools/identify?frets=x,3,2,0,1,0` | Chord name from fingering |
 | `GET /api/tools/analyze` / `GET /api/tools/detect-key` | Numerals / key |

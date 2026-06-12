@@ -21,6 +21,8 @@ from pytheory import (
     save_midi,
 )
 from pytheory import INSTRUMENTS as SOUND_PRESETS
+from pytheory import Pattern
+from pytheory._statics import TEMPERAMENTS
 
 SAMPLE_RATE = 44100
 
@@ -81,9 +83,9 @@ def wav_bytes(audio: np.ndarray) -> bytes:
 
 
 def score_for(items, *, bpm=110, duration=1.0, synth="sine", strum=False,
-              sound=None, system="western") -> Score:
+              sound=None, system="western", temperament="equal") -> Score:
     """Build a one-part Score from a list of Tones/Chords."""
-    score = Score(bpm=bpm, system=system)
+    score = Score(bpm=bpm, system=system, temperament=temperament)
     kwargs = dict(volume=0.6, reverb=0.15,
                   fretboard=Fretboard.guitar() if strum else None)
     if sound:
@@ -134,6 +136,9 @@ async def meta(req, resp):
         "scales": SCALE_NAMES,
         "systems": SYSTEM_META,
         "sounds": SOUNDS,
+        "temperaments": list(TEMPERAMENTS.keys()),
+        "drum_presets": sorted(Pattern._PRESETS),
+        "drum_fills": sorted(Pattern._FILLS),
         "progressions": {name: list(numerals) for name, numerals in PROGRESSIONS.items()},
         "version": __import__("pytheory").__version__,
     }
@@ -207,11 +212,17 @@ async def chord_view(req, resp):
 @api.route("/api/chord/audio")
 async def chord_audio(req, resp):
     name = req.params.get("name", "C")
+    temperament = req.params.get("temperament", "equal")
+    if temperament not in TEMPERAMENTS:
+        return error(resp, 400, f"Unknown temperament: {temperament}")
     try:
         chord = Chord.from_name(name)
     except Exception:
         return error(resp, 404, f"Unknown chord: {name}")
-    score = score_for([chord], bpm=60, duration=2.0, strum=True, sound=_sound(req))
+    # Strumming resolves via chord charts (equal-tempered); for non-equal
+    # temperaments play the block chord so the tuning math is audible.
+    score = score_for([chord], bpm=60, duration=2.0, sound=_sound(req),
+                      strum=temperament == "equal", temperament=temperament)
     send_wav(resp, render_score(score))
 
 
@@ -268,9 +279,16 @@ async def chord_lab(req, resp):
     except Exception:
         extensions = []
 
+    try:
+        beats = [{"pair": f"{a.full_name}–{b.full_name}", "hz": round(hz, 1)}
+                 for a, b, hz in chord.beat_frequencies]
+    except Exception:
+        beats = []
+
     resp.media = {
         "symbol": chord.symbol,
         "tones": tone_strs(chord),
+        "beat_frequencies": beats,
         "intervals": list(chord.intervals),
         "pitch_classes": sorted(chord.pitch_classes),
         "forte_number": chord.forte_number,
@@ -505,6 +523,82 @@ async def progression_midi(req, resp):
     resp.headers["Content-Disposition"] = "attachment; filename=progression.mid"
 
 
+# --- Groove Lab --------------------------------------------------------------
+
+def _groove_score(req) -> Score:
+    preset = req.params.get("preset", "rock")
+    bpm = max(40, min(240, int(req.params.get("bpm", "100") or 100)))
+    swing = max(0.0, min(0.7, float(req.params.get("swing", "0") or 0)))
+    repeats = max(1, min(8, int(req.params.get("repeats", "4") or 4)))
+    fill = req.params.get("fill") or None
+    fill_every = int(req.params.get("fill_every", "0") or 0) or None
+    score = Score(bpm=bpm, swing=swing)
+    score.drums(preset, repeats=repeats, fill=fill, fill_every=fill_every)
+
+    # Optional chord backing: cycle a progression underneath, one chord per bar.
+    numerals_param = req.params.get("numerals", "")
+    if numerals_param:
+        key = _key(req)
+        numerals = PROGRESSIONS.get(numerals_param, tuple(numerals_param.split("-")))
+        chords = key.progression(*numerals)
+        part = score.part("chords", instrument=_sound(req) or "electric_piano",
+                          volume=0.45, reverb=0.2)
+        beats = 0.0
+        i = 0
+        while beats < score.total_beats and i < 64:
+            part.add(chords[i % len(chords)], 4.0)
+            beats += 4.0
+            i += 1
+    return score
+
+
+@api.route("/api/groove/audio")
+async def groove_audio(req, resp):
+    try:
+        score = _groove_score(req)
+    except Exception as e:
+        return error(resp, 400, f"Bad groove: {e}")
+    send_wav(resp, render_score(score))
+
+
+@api.route("/api/groove/midi")
+async def groove_midi(req, resp):
+    try:
+        score = _groove_score(req)
+    except Exception as e:
+        return error(resp, 400, f"Bad groove: {e}")
+    with tempfile.NamedTemporaryFile(suffix=".mid", delete=False) as f:
+        path = f.name
+    try:
+        score.save_midi(path)
+        with open(path, "rb") as f:
+            resp.content = f.read()
+    finally:
+        os.unlink(path)
+    resp.headers["Content-Type"] = "audio/midi"
+    resp.headers["Content-Disposition"] = "attachment; filename=groove.mid"
+
+
+# --- Circle of fifths ---------------------------------------------------------
+
+_FIFTHS_ORDER = ["C", "G", "D", "A", "E", "B", "Gb", "Db", "Ab", "Eb", "Bb", "F"]
+
+
+@api.route("/api/circle")
+async def circle_of_fifths(req, resp):
+    out = []
+    for tonic in _FIFTHS_ORDER:
+        key = Key(tonic)
+        sig = key.signature
+        out.append({
+            "major": tonic,
+            "minor": str(key.relative).replace(" minor", "m"),
+            "sharps": sig["sharps"],
+            "flats": sig["flats"],
+        })
+    resp.media = {"keys": out}
+
+
 # --- Tools: identify / analyze / detect -------------------------------------
 
 @api.route("/api/tools/identify")
@@ -584,8 +678,19 @@ async def detect_key(req, resp):
         key = Key.detect(*notes)
     except Exception as e:
         return error(resp, 422, f"Couldn't detect key: {e}")
+    # Scale detection casts a wider net than major/minor keys (modes,
+    # pentatonics, harmonic minor, ...).
+    scale_match = None
+    try:
+        detected = TonedScale(tonic="C4")["major"].detect(*notes)
+        if detected:
+            scale_match = {"tonic": detected[0], "scale": detected[1],
+                           "matched": detected[2]}
+    except Exception:
+        pass
     if key is None:
-        resp.media = {"key": None, "message": "No clear key match."}
+        resp.media = {"key": None, "message": "No clear key match.",
+                      "scale_match": scale_match}
         return
     resp.media = {
         "key": str(key),
@@ -594,6 +699,7 @@ async def detect_key(req, resp):
         "chords": list(key.chords),
         "signature": key.signature,
         "relative": str(key.relative),
+        "scale_match": scale_match,
     }
 
 

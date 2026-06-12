@@ -371,6 +371,7 @@ async function refreshKey() {
     fill($("key-after"), afterChords, $("key-after").value || afterChords[3]);
     refreshSuggestions();
     refreshModulation();
+    renderCircle();
   } catch (e) {
     $("key-error").textContent = e.message;
   }
@@ -405,6 +406,83 @@ async function refreshModulation() {
   } catch (e) {
     $("key-error").textContent = e.message;
   }
+}
+
+/* ---------- circle of fifths ---------- */
+
+let circleData = null;
+
+async function renderCircle() {
+  if (!circleData) circleData = (await api("/api/circle")).keys;
+  const svg = $("circle-fifths");
+  svg.innerHTML = "";
+  const ns = "http://www.w3.org/2000/svg";
+  const cx = 180, cy = 180;
+  const current = $("key-tonic").value;
+  const mode = $("key-mode").value;
+  circleData.forEach((k, i) => {
+    const angle = (i * 30 - 90) * Math.PI / 180;
+    const place = (r) => [cx + r * Math.cos(angle), cy + r * Math.sin(angle)];
+    const rings = [
+      { label: k.major, r: 142, size: 19, active: mode === "major" && k.major === current },
+      { label: k.minor, r: 96, size: 14, active: mode === "minor" && k.minor === current + "m" },
+    ];
+    for (const ring of rings) {
+      const [x, y] = place(ring.r);
+      const g = document.createElementNS(ns, "g");
+      g.style.cursor = "pointer";
+      const c = document.createElementNS(ns, "circle");
+      c.setAttribute("cx", x); c.setAttribute("cy", y); c.setAttribute("r", ring.size + 5);
+      c.setAttribute("class", "circle-node" + (ring.active ? " active" : ""));
+      const t = document.createElementNS(ns, "text");
+      t.setAttribute("x", x); t.setAttribute("y", y + 4.5);
+      t.setAttribute("text-anchor", "middle");
+      t.setAttribute("font-size", ring.size === 19 ? 15 : 12);
+      t.setAttribute("class", "circle-label" + (ring.active ? " active" : ""));
+      t.textContent = ring.label;
+      g.append(c, t);
+      g.addEventListener("click", () => {
+        $("key-tonic").value = k.major;
+        $("key-mode").value = ring.label.endsWith("m") && ring.r === 96 ? "minor" : "major";
+        refreshKey();
+      });
+      svg.appendChild(g);
+    }
+    // signature label between the rings
+    const sig = k.sharps ? `${k.sharps}♯` : k.flats ? `${k.flats}♭` : "";
+    if (sig) {
+      const [x, y] = place(120);
+      const s = document.createElementNS(ns, "text");
+      s.setAttribute("x", x); s.setAttribute("y", y + 3);
+      s.setAttribute("text-anchor", "middle");
+      s.setAttribute("font-size", 9);
+      s.setAttribute("class", "circle-sig");
+      s.textContent = sig;
+      svg.appendChild(s);
+    }
+  });
+}
+
+/* ---------- groove lab ---------- */
+
+function grooveParams() {
+  const q = new URLSearchParams({
+    preset: $("groove-preset").value,
+    bpm: $("groove-bpm").value,
+    swing: $("groove-swing").value,
+    repeats: $("groove-repeats").value,
+  });
+  if ($("groove-fill").value !== "none") {
+    q.set("fill", $("groove-fill").value);
+    if ($("groove-fill-every").value) q.set("fill_every", $("groove-fill-every").value);
+  }
+  if ($("groove-numerals").value !== "none") {
+    q.set("numerals", $("groove-numerals").value);
+    q.set("tonic", $("groove-tonic").value);
+    q.set("mode", $("groove-mode").value);
+    if ($("sound").value) q.set("sound", $("sound").value);
+  }
+  return q.toString();
 }
 
 /* ---------- tools panel ---------- */
@@ -587,16 +665,20 @@ function tunerUpdate(d) {
 
 async function tunerTick() {
   if (!tuner.running || tuner.busy) return;
-  const need = Math.floor(tuner.ctx.sampleRate * 0.6);
+  // Rolling window: analyze the most recent ~0.35s without draining the
+  // buffer, so updates land every tick (~4-5/sec) instead of waiting for
+  // a fresh accumulation each time.
+  const need = Math.floor(tuner.ctx.sampleRate * 0.35);
   let total = 0;
   for (const chunk of tuner.buffer) total += chunk.length;
   if (total < need) return;
-  // concatenate the most recent ~0.6s and reset the buffer
   const all = new Float32Array(total);
   let off = 0;
   for (const chunk of tuner.buffer) { all.set(chunk, off); off += chunk.length; }
-  tuner.buffer = [];
-  const slice = all.subarray(Math.max(0, all.length - need));
+  // trim the rolling buffer to the last ~0.5s
+  const keep = Math.floor(tuner.ctx.sampleRate * 0.5);
+  if (total > keep) tuner.buffer = [all.subarray(total - keep)];
+  const slice = all.subarray(all.length - need);
   tuner.busy = true;
   try {
     const r = await fetch(`/api/tools/tune?rate=${tuner.ctx.sampleRate}&system=${encodeURIComponent($("tuner-system").value)}`, {
@@ -616,7 +698,10 @@ async function tryNativeTuner() {
   try {
     const r = await fetch("/api/tuner/start", { method: "POST" });
     const data = await r.json();
-    if (!r.ok) return false;
+    if (!r.ok) {
+      tuner.nativeFailure = data.error || r.statusText;
+      return false;
+    }
     return await new Promise((resolve) => {
       const es = new EventSource(data.stream);
       const giveUp = setTimeout(() => { es.close(); resolve(false); }, 4000);
@@ -628,6 +713,7 @@ async function tryNativeTuner() {
           tuner.running = true;
           tuner.mode = "sse";
           $("tuner-toggle").textContent = "■ Stop tuner";
+          $("tuner-mode").textContent = "native tuner — server mic, 20 readings/sec";
           resolve(true);
         }
         const d = JSON.parse(e.data);
@@ -668,8 +754,10 @@ async function tunerStart() {
   source.connect(tuner.node);
   tuner.node.connect(tuner.ctx.destination);
   tuner.running = true;
-  tuner.timer = setInterval(tunerTick, 300);
+  tuner.timer = setInterval(tunerTick, 200);
   $("tuner-toggle").textContent = "■ Stop tuner";
+  $("tuner-mode").textContent = "browser mic"
+    + (tuner.nativeFailure ? ` (native tuner unavailable: ${tuner.nativeFailure})` : "");
 }
 
 function tunerStop() {
@@ -686,6 +774,7 @@ function tunerStop() {
     tuner.buffer = [];
   }
   $("tuner-toggle").textContent = "🎤 Start tuner";
+  $("tuner-mode").textContent = "";
   tunerUpdate({ voiced: false });
 }
 
@@ -752,6 +841,14 @@ async function refreshLab() {
     }
     $("lab-ext").textContent = d.extensions.length
       ? `available extensions: ${d.extensions.join(" · ")}` : "";
+
+    pillRow($("lab-temperaments"), META.temperaments, (pill, t) => {
+      pill.textContent = t;
+      pill.append(" ", playButton(`/api/chord/audio?name=${encodeURIComponent(d.symbol)}&temperament=${t}`));
+    });
+    $("lab-beats").innerHTML = d.beat_frequencies.length
+      ? d.beat_frequencies.map((b) => `<tr><td>${b.pair}</td><td>${b.hz} Hz</td></tr>`).join("")
+      : "<tr><td>—</td></tr>";
   } catch (e) {
     $("lab-error").textContent = e.message;
   }
@@ -803,9 +900,13 @@ async function detectKey() {
   try {
     const notes = encodeURIComponent($("detect-notes").value);
     const d = await api(`/api/tools/detect-key?notes=${notes}`);
-    $("detect-result").innerHTML = d.key
+    let html = d.key
       ? `<strong>${d.key}</strong> — chords: ${d.chords.join(", ")} · relative: ${d.relative}`
       : d.message;
+    if (d.scale_match) {
+      html += `<br><span class="hint">best scale fit: ${d.scale_match.tonic} ${d.scale_match.scale} (${d.scale_match.matched} notes matched)</span>`;
+    }
+    $("detect-result").innerHTML = html;
   } catch (e) {
     $("detect-error").textContent = e.message;
   }
@@ -898,6 +999,20 @@ async function boot() {
   });
   $("lab-go").addEventListener("click", refreshLab);
   $("lab-symbol").addEventListener("keydown", (e) => { if (e.key === "Enter") refreshLab(); });
+  fill($("groove-preset"), META.drum_presets, "funk");
+  fill($("groove-fill"), ["none", ...META.drum_fills], "none");
+  fill($("groove-numerals"), ["none", ...Object.keys(META.progressions)], "none");
+  fill($("groove-tonic"), META.roots, "C");
+  $("groove-swing").addEventListener("input", () =>
+    ($("groove-swing-label").textContent = $("groove-swing").value));
+  $("groove-play").addEventListener("click", (e) => {
+    $("groove-status").textContent = "rendering…";
+    playUrl(`/api/groove/audio?${grooveParams()}`, e.target);
+    audioEl.addEventListener("playing", () =>
+      ($("groove-status").textContent = `${$("groove-preset").value} · ${$("groove-bpm").value} bpm`), { once: true });
+  });
+  $("groove-midi").addEventListener("click", () =>
+    window.location.assign(`/api/groove/midi?${grooveParams()}`));
   fill($("tuner-instrument"), ["chromatic", ...META.instruments], "guitar");
   fill($("tuner-tuning"), META.tunings, "standard");
   fill($("tuner-system"), Object.keys(META.systems), "western");

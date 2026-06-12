@@ -218,6 +218,19 @@ button.mini-play.wide-play {
 }
 #sound-wrap select { font-size: 0.85rem; padding: 0.2rem 0.4rem; }
 
+/* circle of fifths */
+#circle-fifths { display: block; margin: 0 auto; }
+.circle-node { fill: var(--code-bg); stroke: var(--line); stroke-width: 1; }
+.circle-node.active { fill: var(--accent); stroke: var(--accent); }
+.circle-label { fill: var(--ink); font-family: var(--serif); }
+.circle-label.active { fill: var(--bg); }
+.circle-sig { fill: var(--faint); font-family: var(--mono); }
+g:hover .circle-node:not(.active) { stroke: var(--accent); }
+
+/* groove lab */
+.mono-val { font-family: var(--mono); color: var(--accent2); margin-left: 0.3rem; }
+input[type="range"] { accent-color: var(--accent); }
+
 /* tuner */
 .tuner-display { text-align: center; margin: 1rem 0 1.5rem; }
 .tuner-note { font-size: 4.5rem; line-height: 1.1; font-family: var(--serif); }
