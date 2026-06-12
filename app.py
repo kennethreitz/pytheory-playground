@@ -1182,6 +1182,8 @@ async def harmonize(req, resp):
         path = f.name
     try:
         score = Score.from_wav(path, **kwargs)
+        from pytheory.audio import load_wav
+        original, original_rate = load_wav(path)
     except Exception as e:
         return error(resp, 422, f"Couldn't transcribe audio: {e}")
     finally:
@@ -1233,6 +1235,24 @@ async def harmonize(req, resp):
         root = ch.root if getattr(ch, "root", None) is not None else ch.tones[0]
         bass_part.add(Tone.from_midi(max(28, root.midi - 12)), 4.0)
 
+    # Playback mixes YOUR recording over the accompaniment — the synthesized
+    # melody is muted for audio (it stays in the MIDI and notation).
+    if melody is not None:
+        melody.volume = 0.0
+    accompaniment = render_score(score)
+    if original_rate != SAMPLE_RATE:
+        x_new = np.arange(int(len(original) * SAMPLE_RATE / original_rate))
+        original = np.interp(x_new * original_rate / SAMPLE_RATE,
+                             np.arange(len(original)), original)
+    voice = np.stack([original, original], axis=1)
+    length = max(len(accompaniment), len(voice))
+    mix = np.zeros((length, 2))
+    mix[:len(accompaniment)] += accompaniment
+    mix[:len(voice)] += voice * 0.9
+    peak = np.abs(mix).max()
+    if peak > 1.0:
+        mix /= peak
+
     out = _score_outputs(score, title, key.tonic_name, mode)
     out.update({
         "key": str(key),
@@ -1240,7 +1260,7 @@ async def harmonize(req, resp):
         "bars": n_bars,
         "chords": [c.symbol for c in chosen],
         "melody_notes": len(pitched),
-        "audio_b64": base64.b64encode(wav_bytes(render_score(score))).decode(),
+        "audio_b64": base64.b64encode(wav_bytes(mix)).decode(),
     })
     with tempfile.NamedTemporaryFile(suffix=".mid", delete=False) as f:
         midi_path = f.name
