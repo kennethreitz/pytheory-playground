@@ -1886,6 +1886,40 @@ async function boot() {
       $("song-error").textContent = err.message;
     }
   });
+  $("song-play").addEventListener("click", async (e) => {
+    if (audioEl && !audioEl.paused && audioEl._button === e.target) {
+      audioEl.pause();
+      return;
+    }
+    $("song-error").textContent = "";
+    $("song-status").textContent = "rendering the band…";
+    try {
+      const blob = await (await songPost("/api/song/audio")).blob();
+      playUrl(URL.createObjectURL(blob), e.target);
+    } catch (err) {
+      $("song-error").textContent = err.message;
+    } finally {
+      $("song-status").textContent = "";
+    }
+  });
+  $("song-midi").addEventListener("click", async () => {
+    try {
+      downloadBlob(await (await songPost("/api/song/midi")).blob(), "song.mid");
+    } catch (err) {
+      $("song-error").textContent = err.message;
+    }
+  });
+  $("song-pdf").addEventListener("click", async (e) => {
+    try {
+      $("song-status").textContent = "engraving…";
+      const d = await (await songPost("/api/song/notation")).json();
+      await engraveSource(d.lilypond, d.lilypond_sig, e.target, "song-error");
+    } catch (err) {
+      $("song-error").textContent = err.message;
+    } finally {
+      $("song-status").textContent = "";
+    }
+  });
   if (!SHARE._songRestored) sketchSong();
 
   refreshChord();
