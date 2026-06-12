@@ -134,7 +134,12 @@ async def index(req, resp):
         html = f.read()
     # Absolute URLs for the social-card tags, whatever host we're served from.
     base = f"{req.url.scheme}://{req.url.netloc}"
-    resp.html = html.replace("__BASE__", base)
+    html = html.replace("__BASE__", base)
+    # Cache-bust the app assets so browsers pick up new JS/CSS on deploy.
+    for asset in ("style.css", "app.js"):
+        version = int(os.path.getmtime(os.path.join("static", asset)))
+        html = html.replace(f"/static/{asset}", f"/static/{asset}?v={version}")
+    resp.html = html
 
 
 @api.route("/api/meta")
@@ -218,7 +223,66 @@ async def chord_view(req, resp):
         "strings": list(fingering.string_names),
         "tones": [t.name for t in named.acceptable_tones],
         "pitches": [str(t) for t in chord.tones],
+        "alternatives": _alt_fingerings(named, fretboard,
+                                        skip=tuple(fingering.positions)),
     }
+
+
+def _alt_fingerings(named, fretboard, *, skip=None, count=5):
+    """A handful of playable voicings spread up the neck (low string first;
+    None = muted). Raw chart fingerings use -1 for muted strings."""
+    try:
+        raw = named.fingerings(fretboard=fretboard)  # tuples, high string first
+    except Exception:
+        return []
+
+    def norm(t):
+        return tuple(None if p is None or p < 0 else p for p in t)
+
+    def fretted(t):
+        return [p for p in t if p is not None and p > 0]
+
+    def sounding(t):
+        return [p for p in t if p is not None]
+
+    def span(t):
+        f = fretted(t)
+        return max(f) - min(f) if f else 0
+
+    def base(t):
+        f = fretted(t)
+        return min(f) if f else 0
+
+    def contiguous(t):
+        # mutes only at the edges — no dead strings in the middle of a strum
+        idx = [i for i, p in enumerate(t) if p is not None]
+        return bool(idx) and idx == list(range(idx[0], idx[-1] + 1))
+
+    def hand_fits(t):
+        f = fretted(t)
+        if not f:
+            return True
+        # 5-6 fretted strings only work as a barre (tight span)
+        if len(f) > 4 and span(t) > 2:
+            return False
+        # open strings don't mix with positions up the neck
+        if max(f) > 4 and any(p == 0 for p in t):
+            return False
+        return span(t) <= 3
+
+    playable = [t for t in (norm(r) for r in raw)
+                if len(sounding(t)) >= 4 and contiguous(t) and hand_fits(t)]
+    playable.sort(key=lambda t: (base(t), span(t), -len(sounding(t))))
+    out, seen_bases = [], set()
+    for t in playable:
+        low_first = tuple(reversed(t))
+        if low_first == skip or base(t) in seen_bases:
+            continue
+        seen_bases.add(base(t))
+        out.append(list(low_first))
+        if len(out) >= count:
+            break
+    return out
 
 
 @api.route("/api/chord/audio")
@@ -421,21 +485,50 @@ async def scale_positions(req, resp):
         scale, name, _ = _toned_scale(req)
     except Exception as e:
         return error(resp, 400, f"Bad scale request: {e}")
-    pcs = {t.midi % 12 for t in scale.tones}
-    root_pc = scale.tones[0].midi % 12
+    resp.media = {"name": name, "frets": frets,
+                  "strings": _board_positions(fretboard, scale.tones,
+                                              scale.tones[0], frets)}
+
+
+def _board_positions(fretboard, tones, root_tone, frets):
+    """Positions of the given tones' pitch classes across a fretboard."""
+    pcs = {t.midi % 12 for t in tones}
+    root_pc = root_tone.midi % 12
     strings = []
     for open_tone in fretboard.tones:  # low string first
         row = {"open": str(open_tone), "frets": []}
         for f in range(frets + 1):
             midi = open_tone.midi + f
             if midi % 12 in pcs:
+                tone = Tone.from_midi(midi)
                 row["frets"].append({
                     "fret": f,
-                    "note": Tone.from_midi(midi).name,
+                    "note": tone.name,
+                    "pitch": str(tone),
                     "root": midi % 12 == root_pc,
                 })
         strings.append(row)
-    resp.media = {"name": name, "frets": frets, "strings": strings}
+    return strings
+
+
+@api.route("/api/chord/positions")
+async def chord_positions(req, resp):
+    """Chord-tone (arpeggio) positions across the fretboard."""
+    frets = min(int(req.params.get("frets", "12")), 15)
+    try:
+        fretboard = _fretboard_params(req)
+    except KeyError:
+        return error(resp, 400, "Unknown instrument")
+    except ValueError as e:
+        return error(resp, 400, str(e))
+    name = req.params.get("name", "C")
+    try:
+        chord = _parse_chord(name)
+    except Exception as e:
+        return error(resp, 404, f"Unknown chord: {e}")
+    root = chord.root if getattr(chord, "root", None) is not None else chord.tones[0]
+    resp.media = {"name": chord.symbol, "frets": frets,
+                  "strings": _board_positions(fretboard, chord.tones, root, frets)}
 
 
 @api.route("/api/scale/audio")

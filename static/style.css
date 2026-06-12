@@ -305,3 +305,8 @@ footer {
   color: var(--muted); font-size: 0.9rem; font-style: italic;
   border-top: 1px solid var(--line);
 }
+
+/* alternative voicings */
+.alt-voicing { cursor: pointer; border-radius: 6px; padding: 2px; transition: background 0.15s; }
+.alt-voicing:hover { background: var(--code-bg); }
+#gscale-board { display: block; width: 100%; height: auto; }

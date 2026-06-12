@@ -26,8 +26,10 @@ $ docker run -p 5042:5042 pytheory-playground
 - **About** — what pytheory is and how to install it.
 - **Guitar Tab** — chord charts for six fretted instruments with named guitar
   tunings (drop d, DADGAD, …), fully custom tunings, and capo support. The
-  chord diagram is click-editable: build any voicing with the mouse and
-  pytheory names it and selects the matching chord.
+  chord diagram is click-editable (pytheory names whatever you finger and
+  selects the matching chord), alternative voicings up the neck load into the
+  editor with a click, and an "on the neck" fretboard maps any scale — or the
+  chord's own tones — across 12 frets, every note clickable and audible.
 - **Tuner** — pytheory 0.47's native tuner: mic → YIN → note + signed cents at
   20 readings/sec over a Server-Sent Events stream, with a needle that goes
   green within ±5 cents. Chromatic or per-instrument (strings light up, click

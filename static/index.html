@@ -128,19 +128,28 @@
           <p id="chord-tones" class="tones"></p>
           <p class="hint">Click the diagram to build your own voicing — above the nut toggles
             open&nbsp;/&nbsp;muted. Matching chords get selected automatically.</p>
+          <h4>More voicings <small>NamedChord.fingerings(…)</small></h4>
+          <div id="chord-alts" class="prog-row"></div>
         </div>
         <div class="card">
           <h3>ASCII tab <small>NamedChord.tab(fretboard=…)</small></h3>
           <pre id="chord-tab"></pre>
         </div>
         <div class="card wide">
-          <h3>Scale fingering <small>TonedScale + fretboard, same tuning &amp; capo</small>
-            <select id="gscale-tonic" class="inline"></select>
-            <select id="gscale-name" class="inline"></select>
+          <h3>On the neck <small>TonedScale / Chord + fretboard, same tuning &amp; capo</small>
+            <select id="gscale-mode" class="inline">
+              <option value="scale" selected>scale</option>
+              <option value="chord">chord tones</option>
+            </select>
+            <span id="gscale-pickers">
+              <select id="gscale-tonic" class="inline"></select>
+              <select id="gscale-name" class="inline"></select>
+            </span>
             <button id="gscale-play" class="mini-play wide-play">&#9654; hear it</button>
           </h3>
           <svg id="gscale-board" width="100%"></svg>
-          <p class="hint">Root notes in red. Follows the instrument, tuning, and capo above.</p>
+          <p class="hint">Root notes in red. Click any note to hear it. Follows the instrument,
+            tuning, and capo above.</p>
         </div>
       </div>
       <p class="error" id="chord-error"></p>
@@ -565,7 +574,7 @@ tuner.onmessage = (e) => {
 
   <footer>
     <p>Built with <a href="https://github.com/kennethreitz/pytheory">pytheory</a> +
-       <a href="https://github.com/kennethreitz/responder">responder</a>.</p>
+       <a href="https://responder.kennethreitz.org/">responder</a>.</p>
   </footer>
 
   <script src="/static/app.js"></script>

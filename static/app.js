@@ -242,6 +242,8 @@ async function refreshChord() {
     chordState.custom = false;
     chordState.voicingTones = [];
     renderChordDiagram();
+    renderAlternatives(c.alternatives || []);
+    if ($("gscale-mode").value === "chord") refreshGuitarScale();
   } catch (e) {
     $("chord-error").textContent = e.message;
   }
@@ -292,27 +294,69 @@ function renderScaleBoard(svg, data) {
     const lbl = el("text", { x: 8, y: y + 4, "font-size": 11, class: "diag-label" });
     lbl.textContent = s.open;
   });
-  // scale dots
+  // scale dots (click to hear)
   data.strings.forEach((s, i) => {
     const y = sy(i);
     for (const pos of s.frets) {
-      el("circle", { cx: dx(pos.fret), cy: y, r: 10,
-                     class: pos.root ? "board-dot root" : "board-dot" });
-      const t = el("text", { x: dx(pos.fret), y: y + 3.5, "text-anchor": "middle",
-                             "font-size": 9, class: "board-note" });
+      const g = document.createElementNS(ns, "g");
+      g.style.cursor = "pointer";
+      const c = document.createElementNS(ns, "circle");
+      c.setAttribute("cx", dx(pos.fret)); c.setAttribute("cy", y); c.setAttribute("r", 10);
+      c.setAttribute("class", pos.root ? "board-dot root" : "board-dot");
+      const t = document.createElementNS(ns, "text");
+      t.setAttribute("x", dx(pos.fret)); t.setAttribute("y", y + 3.5);
+      t.setAttribute("text-anchor", "middle"); t.setAttribute("font-size", 9);
+      t.setAttribute("class", "board-note");
       t.textContent = pos.note;
+      g.append(c, t);
+      if (pos.pitch) g.addEventListener("click", () => playPitch(pos.pitch));
+      svg.appendChild(g);
     }
   });
 }
 
+// quick one-shot note playback (no toggle button involved)
+function playPitch(pitch) {
+  if (audioEl) audioEl.pause();
+  audioEl = new Audio(`/api/voicing/audio?tones=${encodeURIComponent(pitch)}${soundQ()}`);
+  audioEl.play().catch(() => {});
+}
+
 async function refreshGuitarScale() {
-  const q = `tonic=${encodeURIComponent($("gscale-tonic").value)}&name=${encodeURIComponent($("gscale-name").value)}`
-    + `&instrument=${$("chord-instrument").value}${chordTuning()}`;
+  const mode = $("gscale-mode").value;
+  $("gscale-pickers").classList.toggle("hidden", mode === "chord");
+  const base = `instrument=${$("chord-instrument").value}${chordTuning()}`;
+  const url = mode === "chord"
+    ? `/api/chord/positions?name=${encodeURIComponent($("chord-root").value + $("chord-quality").value)}&${base}`
+    : `/api/scale/positions?tonic=${encodeURIComponent($("gscale-tonic").value)}&name=${encodeURIComponent($("gscale-name").value)}&${base}`;
   try {
-    const d = await api(`/api/scale/positions?${q}`);
-    renderScaleBoard($("gscale-board"), d);
+    renderScaleBoard($("gscale-board"), await api(url));
   } catch (e) {
     $("chord-error").textContent = e.message;
+  }
+}
+
+// alternative voicings as clickable mini diagrams
+function renderAlternatives(alts) {
+  const row = $("chord-alts");
+  row.innerHTML = "";
+  for (const positions of alts) {
+    const div = document.createElement("div");
+    div.className = "prog-chord alt-voicing";
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("width", 110);
+    svg.setAttribute("height", 135);
+    chordDiagram(svg, positions, chordState.strings, { width: 110, height: 135 });
+    div.appendChild(svg);
+    div.title = "Load this voicing into the editor";
+    div.addEventListener("click", () => {
+      chordState.positions = [...positions];
+      chordState.viewBase = autoBase(positions);
+      chordState.custom = true;
+      renderChordDiagram();
+      identifyCurrentVoicing();
+    });
+    row.appendChild(div);
   }
 }
 
@@ -1204,9 +1248,14 @@ async function boot() {
   $("chord-capo").addEventListener("change", () => { refreshChord(); refreshGuitarScale(); });
   fill($("gscale-tonic"), META.roots, "A");
   fill($("gscale-name"), META.systems.western.scales.filter((s) => s !== "chromatic"), "minor");
-  ["gscale-tonic", "gscale-name"].forEach((id) =>
+  ["gscale-tonic", "gscale-name", "gscale-mode"].forEach((id) =>
     $(id).addEventListener("change", refreshGuitarScale));
   $("gscale-play").addEventListener("click", (e) => {
+    if ($("gscale-mode").value === "chord") {
+      const name = $("chord-root").value + $("chord-quality").value;
+      playUrl(`/api/chord/audio?name=${encodeURIComponent(name)}${soundQ()}`, e.target);
+      return;
+    }
     const q = `tonic=${encodeURIComponent($("gscale-tonic").value)}&octave=3&name=${encodeURIComponent($("gscale-name").value)}`;
     playUrl(`/api/scale/audio?${q}${soundQ()}`, e.target);
   });
