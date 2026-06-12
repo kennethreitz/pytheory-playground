@@ -24,6 +24,7 @@
 
 /* Dark mode by default — same palette as kennethreitz.org's dark theme. */
 :root {
+  color-scheme: dark; /* native widgets (datalist popups, selects) follow */
   --bg: #0d1117;
   --ink: #e5e5e5;
   --muted: #9aa0a6;
@@ -196,6 +197,28 @@ svg text { font-family: var(--mono); }
 }
 .note-pill:hover { border-color: var(--faint); }
 .note-pill.tonic { border-color: var(--accent); color: var(--accent); }
+
+/* scale-degree colors — consistent everywhere a degree shows up */
+:root {
+  --deg1: #ff7b72; --deg2: #d29922; --deg3: #58a6ff; --deg4: #3fb950;
+  --deg5: #bc8cff; --deg6: #39c5cf; --deg7: #f778ba;
+}
+.deg-1 { border-color: var(--deg1) !important; color: var(--deg1); }
+.deg-2 { border-color: var(--deg2) !important; color: var(--deg2); }
+.deg-3 { border-color: var(--deg3) !important; color: var(--deg3); }
+.deg-4 { border-color: var(--deg4) !important; color: var(--deg4); }
+.deg-5 { border-color: var(--deg5) !important; color: var(--deg5); }
+.deg-6 { border-color: var(--deg6) !important; color: var(--deg6); }
+.deg-7 { border-color: var(--deg7) !important; color: var(--deg7); }
+svg .deg-1 { fill: var(--deg1); } svg .deg-2 { fill: var(--deg2); }
+svg .deg-3 { fill: var(--deg3); } svg .deg-4 { fill: var(--deg4); }
+svg .deg-5 { fill: var(--deg5); } svg .deg-6 { fill: var(--deg6); }
+svg .deg-7 { fill: var(--deg7); }
+
+/* harmonic-function colors for Roman numerals */
+.fn-tonic { color: var(--deg1); }
+.fn-subdominant { color: var(--deg4); }
+.fn-dominant { color: var(--deg2); }
 .note-pill small { color: var(--faint); }
 
 /* piano */

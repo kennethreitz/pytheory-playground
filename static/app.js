@@ -315,7 +315,8 @@ function renderScaleBoard(svg, data) {
       g.style.cursor = "pointer";
       const c = document.createElementNS(ns, "circle");
       c.setAttribute("cx", dx(pos.fret)); c.setAttribute("cy", y); c.setAttribute("r", 10);
-      c.setAttribute("class", pos.root ? "board-dot root" : "board-dot");
+      c.setAttribute("class", pos.root ? "board-dot root"
+        : pos.degree ? `board-dot deg-${((pos.degree - 1) % 7) + 1}` : "board-dot");
       const t = document.createElementNS(ns, "text");
       t.setAttribute("x", dx(pos.fret)); t.setAttribute("y", y + 3.5);
       t.setAttribute("text-anchor", "middle"); t.setAttribute("font-size", 9);
@@ -385,6 +386,12 @@ function pitchClass(name) {
 
 function renderPiano(container, noteNames) {
   container.innerHTML = "";
+  // pitch class -> degree color, in scale order
+  const degOf = new Map();
+  for (const n of noteNames) {
+    const pc = pitchClass(n);
+    if (!degOf.has(pc)) degOf.set(pc, (degOf.size % 7) + 1);
+  }
   const lit = new Set(noteNames.map(pitchClass));
   const whites = [0, 2, 4, 5, 7, 9, 11];
   const blacks = { 0: 1, 1: 3, 3: 6, 4: 8, 5: 10 }; // white index -> black pc
@@ -394,11 +401,13 @@ function renderPiano(container, noteNames) {
       const k = document.createElement("div");
       k.className = "white-key" + (lit.has(pc) ? " lit" : "");
       k.style.left = `${x}px`;
+      if (lit.has(pc)) k.style.background = `var(--deg${degOf.get(pc)})`;
       container.appendChild(k);
       if (wi in blacks) {
         const b = document.createElement("div");
         b.className = "black-key" + (lit.has(blacks[wi]) ? " lit" : "");
         b.style.left = `${x + 25}px`;
+        if (lit.has(blacks[wi])) b.style.background = `var(--deg${degOf.get(blacks[wi])})`;
         container.appendChild(b);
       }
       x += 37;
@@ -432,9 +441,10 @@ async function refreshScale() {
     $("scale-title").textContent = `${tonic} ${s.name}` + (system !== "western" ? ` (${system})` : "");
     const row = $("scale-notes");
     row.innerHTML = "";
+    const nDegrees = Math.max(1, s.tones.length - 1);
     s.tones.forEach((t, i) => {
       const pill = document.createElement("span");
-      pill.className = "note-pill" + (i === 0 ? " tonic" : "");
+      pill.className = `note-pill deg-${(i % nDegrees) % 7 + 1}`;
       pill.textContent = t;
       row.appendChild(pill);
     });
@@ -452,6 +462,8 @@ async function refreshScale() {
     $("scale-harmonized-card").classList.toggle("hidden", s.harmonized.length === 0);
     pillRow($("scale-harmonized"), s.harmonized, (pill, sym) => {
       pill.textContent = sym;
+      const i = s.harmonized.indexOf(sym);
+      pill.classList.add(`deg-${(i % 7) + 1}`);
       pill.append(" ", playButton(`/api/symbols/audio?symbols=${encodeURIComponent(sym)}`));
     });
     lastHarmonized = s.harmonized;
@@ -470,7 +482,7 @@ function renderProgressionRow(chords) {
   for (const ch of chords) {
     const div = document.createElement("div");
     div.className = "prog-chord";
-    div.innerHTML = `<div class="numeral">${ch.numeral}</div><div class="sym">${ch.symbol}</div>`;
+    div.innerHTML = `<div class="numeral ${numeralFunction(ch.numeral)}">${ch.numeral}</div><div class="sym">${ch.symbol}</div>`;
     if (ch.positions) {
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       svg.setAttribute("width", 130);
@@ -522,7 +534,8 @@ async function refreshKey() {
     const numerals = mode === "major"
       ? ["I", "ii", "iii", "IV", "V", "vi", "vii°"]
       : ["i", "ii°", "III", "iv", "v", "VI", "VII"];
-    $("key-numerals").innerHTML = numerals.slice(0, k.chords.length).map((n) => `<th>${n}</th>`).join("");
+    $("key-numerals").innerHTML = numerals.slice(0, k.chords.length)
+      .map((n) => `<th class="${numeralFunction(n)}">${n}</th>`).join("");
     $("key-triads").innerHTML = k.chords.map((c) => `<td>${c}</td>`).join("");
     $("key-sevenths").innerHTML = k.seventh_chords.map((c) => `<td>${c}</td>`).join("");
     const sig = k.signature;
@@ -587,6 +600,15 @@ async function refreshModulation() {
   }
 }
 
+// harmonic function of a Roman numeral: tonic / subdominant / dominant
+function numeralFunction(numeral) {
+  const base = numeral.replace(/[^ivIV]/g, "").toLowerCase();
+  if (["i", "iii", "vi"].includes(base)) return "fn-tonic";
+  if (["ii", "iv"].includes(base)) return "fn-subdominant";
+  if (["v", "vii"].includes(base)) return "fn-dominant";
+  return "";
+}
+
 /* ---------- circle of fifths ---------- */
 
 let circleData = null;
@@ -613,6 +635,10 @@ async function renderCircle() {
       const c = document.createElementNS(ns, "circle");
       c.setAttribute("cx", x); c.setAttribute("cy", y); c.setAttribute("r", ring.size + 5);
       c.setAttribute("class", "circle-node" + (ring.active ? " active" : ""));
+      if (!ring.active) {
+        c.style.fill = `hsl(${i * 30}, 35%, 16%)`;
+        c.style.stroke = `hsl(${i * 30}, 45%, 42%)`;
+      }
       const t = document.createElementNS(ns, "text");
       t.setAttribute("x", x); t.setAttribute("y", y + 4.5);
       t.setAttribute("text-anchor", "middle");

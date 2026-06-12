@@ -503,20 +503,24 @@ async def scale_positions(req, resp):
 
 
 def _board_positions(fretboard, tones, root_tone, frets):
-    """Positions of the given tones' pitch classes across a fretboard."""
-    pcs = {t.midi % 12 for t in tones}
+    """Positions of the given tones' pitch classes across a fretboard,
+    with each note's degree (1-based index within the tone set)."""
+    degree_of = {}
+    for t in tones:
+        degree_of.setdefault(t.midi % 12, len(degree_of) + 1)
     root_pc = root_tone.midi % 12
     strings = []
     for open_tone in fretboard.tones:  # low string first
         row = {"open": str(open_tone), "frets": []}
         for f in range(frets + 1):
             midi = open_tone.midi + f
-            if midi % 12 in pcs:
+            if midi % 12 in degree_of:
                 tone = Tone.from_midi(midi)
                 row["frets"].append({
                     "fret": f,
                     "note": tone.name,
                     "pitch": str(tone),
+                    "degree": degree_of[midi % 12],
                     "root": midi % 12 == root_pc,
                 })
         strings.append(row)
