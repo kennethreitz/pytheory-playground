@@ -948,27 +948,43 @@ async function refreshTunerStrings() {
   }
 }
 
-let strobePhase = 0;
+// Strobe disc (the heart of pytheory's upcoming native strobe tuner):
+// rotation speed is proportional to cents — sharp drifts clockwise, flat
+// counter-clockwise, in tune freezes. Inner rings move slower = fine reading.
+const STROBE_RINGS = [
+  { n: 24, r0: 118, r1: 162, mult: 1.0 },
+  { n: 12, r0: 68, r1: 112, mult: 0.5 },
+  { n: 6, r0: 22, r1: 62, mult: 0.25 },
+];
+let strobeAngle = 0;
 let strobeRaf = null;
 let strobeLast = 0;
 
-function strobeFrame(ts) {
+function strobeFrame(now) {
   if (!tuner.running || $("tuner-display-mode").value !== "strobe") {
     strobeRaf = null;
     return;
   }
-  const dt = strobeLast ? (ts - strobeLast) / 1000 : 0;
-  strobeLast = ts;
+  const ctx = $("strobe-disc").getContext("2d");
+  const dt = strobeLast ? Math.min((now - strobeLast) / 1000, 0.1) : 0;
+  strobeLast = now;
   const cents = tuner.lastCents;
-  if (cents !== null) {
-    // drift speed tracks the detune; dead-on means a frozen band
-    strobePhase = (strobePhase + cents * 6 * dt) % 28;
-    $("strobe-band").style.transform = `translateX(${strobePhase}px)`;
-    $("tuner-strobe").classList.toggle("in-tune", Math.abs(cents) < 1);
-    $("tuner-strobe").style.opacity = "1";
-  } else {
-    $("tuner-strobe").style.opacity = "0.35";
-    $("tuner-strobe").classList.remove("in-tune");
+  if (cents !== null) strobeAngle += cents * dt * 0.06 * 2 * Math.PI;
+
+  ctx.clearRect(0, 0, 340, 340);
+  const styles = getComputedStyle(document.documentElement);
+  ctx.fillStyle = cents === null ? styles.getPropertyValue("--line").trim()
+    : Math.abs(cents) < 5 ? "#3fb950"
+    : styles.getPropertyValue("--accent").trim();
+  for (const ring of STROBE_RINGS) {
+    const seg = (2 * Math.PI) / ring.n;
+    for (let i = 0; i < ring.n; i++) {
+      const a = strobeAngle * ring.mult + i * seg;
+      ctx.beginPath();
+      ctx.arc(170, 170, ring.r1, a, a + seg / 2);       // outer edge
+      ctx.arc(170, 170, ring.r0, a + seg / 2, a, true); // back along inner
+      ctx.fill();
+    }
   }
   strobeRaf = requestAnimationFrame(strobeFrame);
 }
@@ -1051,33 +1067,54 @@ async function tryNativeTuner() {
       tuner.nativeFailure = data.error || r.statusText;
       return false;
     }
-    return await new Promise((resolve) => {
+    const adopt = (conn, kind) => {
+      tuner.es = conn;
+      tuner.running = true;
+      tuner.mode = "sse";
+      $("tuner-toggle").textContent = "■ Stop tuner";
+      $("tuner-mode").textContent = `native tuner — server mic, 20 readings/sec (${kind})`;
+      syncTunerDisplay();
+    };
+    const onReading = (raw) => {
+      const d = JSON.parse(raw);
+      if (!d || !d.note) return tunerUpdate({ voiced: false });
+      tunerUpdate({
+        voiced: true,
+        frequency: d.freq,
+        note: d.note,
+        octave: d.octave,
+        cents: d.cents,
+        target: Math.round(d.freq / Math.pow(2, d.cents / 1200) * 100) / 100,
+      });
+    };
+    // pytheory's next release streams over WebSocket; today's serves SSE.
+    const base = new URL(data.stream);
+    const tryWs = () => new Promise((resolve) => {
+      let adopted = false;
+      const ws = new WebSocket(`ws://${base.host}/ws`);
+      const giveUp = setTimeout(() => { try { ws.close(); } catch {} resolve(false); }, 1500);
+      ws.onerror = () => { clearTimeout(giveUp); resolve(false); };
+      ws.onmessage = (e) => {
+        clearTimeout(giveUp);
+        if (!adopted) { adopted = true; adopt(ws, "websocket"); resolve(true); }
+        onReading(e.data);
+      };
+    });
+    const trySse = () => new Promise((resolve) => {
+      let adopted = false;
       const es = new EventSource(data.stream);
       const giveUp = setTimeout(() => { es.close(); resolve(false); }, 4000);
       es.onerror = () => { clearTimeout(giveUp); es.close(); resolve(false); };
       es.onmessage = (e) => {
         clearTimeout(giveUp);
-        if (tuner.es !== es) {  // first reading: adopt the stream
-          tuner.es = es;
-          tuner.running = true;
-          tuner.mode = "sse";
-          $("tuner-toggle").textContent = "■ Stop tuner";
-          $("tuner-mode").textContent = "native tuner — server mic, 20 readings/sec";
-          syncTunerDisplay();
-          resolve(true);
-        }
-        const d = JSON.parse(e.data);
-        if (!d) return tunerUpdate({ voiced: false });
-        tunerUpdate({
-          voiced: true,
-          frequency: d.freq,
-          note: d.note,
-          octave: d.octave,
-          cents: d.cents,
-          target: Math.round(d.freq / Math.pow(2, d.cents / 1200) * 100) / 100,
-        });
+        if (!adopted) { adopted = true; adopt(es, "sse"); resolve(true); }
+        onReading(e.data);
       };
     });
+    // serve() binds :8123 on a thread — give it a beat and retry once
+    if (await tryWs()) return true;
+    await new Promise((r) => setTimeout(r, 700));
+    return (await tryWs()) || (await trySse());
   } catch {
     return false;
   }
