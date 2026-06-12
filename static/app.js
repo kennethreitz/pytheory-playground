@@ -13,13 +13,30 @@ let audioEl = null;
 // Global playback sound (pytheory synth preset); "" = pure sine.
 const soundQ = () => ($("sound").value ? `&sound=${$("sound").value}` : "");
 
+// Play audio through a button that toggles into a stop button while playing.
+// Starting any sound stops whatever else was playing (and resets its button).
 function playUrl(url, button) {
+  if (audioEl && !audioEl.paused && audioEl._button === button) {
+    audioEl.pause(); // second click = stop; the pause listener resets the label
+    return;
+  }
   if (audioEl) audioEl.pause();
+  if (button._origHTML === undefined) button._origHTML = button.innerHTML;
   button.disabled = true;
   audioEl = new Audio(url);
-  audioEl.addEventListener("canplay", () => (button.disabled = false));
-  audioEl.addEventListener("error", () => (button.disabled = false));
-  audioEl.play().catch(() => (button.disabled = false));
+  audioEl._button = button;
+  const reset = () => {
+    button.disabled = false;
+    button.innerHTML = button._origHTML;
+  };
+  audioEl.addEventListener("playing", () => {
+    button.disabled = false;
+    button.innerHTML = button.classList.contains("mini-play") ? "&#9632;" : "&#9632; Stop";
+  }, { once: true });
+  audioEl.addEventListener("pause", reset, { once: true });
+  audioEl.addEventListener("ended", reset, { once: true });
+  audioEl.addEventListener("error", reset, { once: true });
+  audioEl.play().catch(reset);
 }
 
 function fill(select, options, selected) {
@@ -1006,10 +1023,13 @@ async function boot() {
   $("groove-swing").addEventListener("input", () =>
     ($("groove-swing-label").textContent = $("groove-swing").value));
   $("groove-play").addEventListener("click", (e) => {
-    $("groove-status").textContent = "rendering…";
+    const wasPlaying = audioEl && !audioEl.paused && audioEl._button === e.target;
     playUrl(`/api/groove/audio?${grooveParams()}`, e.target);
+    if (wasPlaying) return; // playUrl just stopped it
+    $("groove-status").textContent = "rendering…";
     audioEl.addEventListener("playing", () =>
       ($("groove-status").textContent = `${$("groove-preset").value} · ${$("groove-bpm").value} bpm`), { once: true });
+    audioEl.addEventListener("pause", () => ($("groove-status").textContent = ""), { once: true });
   });
   $("groove-midi").addEventListener("click", () =>
     window.location.assign(`/api/groove/midi?${grooveParams()}`));
