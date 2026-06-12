@@ -40,9 +40,6 @@
 
 * { box-sizing: border-box; }
 
-/* everything is rem-based, so the root size scales the whole site */
-html { font-size: 18px; }
-
 body {
   margin: 0;
   background: var(--bg);
@@ -396,5 +393,9 @@ footer {
 .chord-flex { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: flex-start; }
 .chord-flex > div:first-child { flex: 0 0 auto; }
 #chord-info { flex: 1 1 14rem; min-width: 13rem; }
-#chord-info h4 { margin-top: 0.2rem; }
-#chord-info h4 small { color: var(--faint); font-family: var(--mono); font-size: 0.65rem; margin-left: 0.4rem; }
+#chord-info h4 { margin-top: 0.2rem; font-size: 1.15rem; }
+#chord-info h4 small { color: var(--faint); font-family: var(--mono); font-size: 0.7rem; margin-left: 0.4rem; }
+#chord-info table.kv { font-size: 1rem; }
+#chord-info table.kv td { padding: 0.35rem 1rem 0.35rem 0; }
+#chord-info .tones { font-size: 1rem; }
+#chord-info .hint { font-size: 0.95rem; }
