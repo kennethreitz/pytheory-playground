@@ -907,6 +907,51 @@ async def detect_key(req, resp):
 
 # --- Tools: MIDI import / export -------------------------------------------
 
+def _clean_audio(samples: np.ndarray, rate: int, cutoff: float = 70.0) -> np.ndarray:
+    """Compensate for background noise before pitch tracking.
+
+    Steep high-pass (default 70 Hz — below any hummable note, above
+    mains hum) so YIN stops tracking room rumble as a bass line, then
+    soft-gate frames near the recording's noise floor.
+    """
+    spectrum = np.fft.rfft(samples)
+    freqs = np.fft.rfftfreq(len(samples), 1.0 / rate)
+    taper = np.clip(freqs / cutoff, 0.0, 1.0) ** 4
+    cleaned = np.fft.irfft(spectrum * taper, len(samples))
+
+    # Noise floor from the quietest 10% of 50 ms frames; duck frames near it.
+    frame = int(rate * 0.05)
+    n = len(cleaned) // frame
+    if n >= 4:
+        frames = cleaned[:n * frame].reshape(n, frame).copy()
+        rms = np.sqrt((frames ** 2).mean(axis=1))
+        floor = np.percentile(rms, 10)
+        # only gate when there's a real noise floor to speak of
+        if floor > 1e-6 and rms.max() / floor < 40:
+            loud = rms >= floor * 2.5
+            # hangover: keep ±300 ms around loud frames so decay tails survive
+            keep = np.convolve(loud.astype(float), np.ones(13), mode="same") > 0
+            frames[~keep] *= 0.05
+            cleaned[:n * frame] = frames.reshape(-1)
+    return cleaned
+
+
+def _cleaned_wav_path(path: str, cutoff: float = 70.0) -> str:
+    """Write a noise-compensated mono WAV next to the upload; returns its path."""
+    from pytheory.audio import load_wav
+
+    samples, rate = load_wav(path)
+    cleaned = _clean_audio(samples, rate, cutoff)
+    pcm = (np.clip(cleaned, -1.0, 1.0) * 32767).astype(np.int16)
+    out_path = path + ".clean.wav"
+    with wave.open(out_path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(pcm.tobytes())
+    return out_path
+
+
 def _detect_score_key(score):
     """Guess the key of a Score from every note name it contains."""
     names = set()
@@ -1003,12 +1048,22 @@ async def audio_convert(req, resp):
     with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as f:
         f.write(body)
         path = f.name
+    clean_path = None
     try:
-        score = Score.from_wav(path, **kwargs)
+        # bass/melody split needs the low end; melody-only can ignore
+        # everything below a hummable 70 Hz
+        if kwargs.get("split"):
+            clean_path = _cleaned_wav_path(path, cutoff=40.0)
+        else:
+            clean_path = _cleaned_wav_path(path, cutoff=70.0)
+            kwargs.setdefault("fmin", 70.0)
+        score = Score.from_wav(clean_path, **kwargs)
     except Exception as e:
         return error(resp, 422, f"Couldn't transcribe audio: {e}")
     finally:
         os.unlink(path)
+        if clean_path and os.path.exists(clean_path):
+            os.unlink(clean_path)
 
     out = _score_outputs(score, title)
     out["bpm"] = score.bpm
@@ -1135,6 +1190,10 @@ async def tune(req, resp):
         return
     rate = int(req.params.get("rate", "48000"))
     samples = np.frombuffer(body, dtype=np.float32).astype(np.float64)
+    # high-pass sub-audio rumble (35 Hz keeps even a bass low E at 41 Hz intact)
+    spectrum = np.fft.rfft(samples)
+    bins = np.fft.rfftfreq(len(samples), 1.0 / rate)
+    samples = np.fft.irfft(spectrum * np.clip(bins / 35.0, 0.0, 1.0) ** 2, len(samples))
     _, freqs, voiced = detect_pitch(samples, rate, fmin=55.0, fmax=1500.0)
     # Demand a stable pitch across most of the chunk, not a single blip.
     if not voiced.any() or voiced.mean() < 0.25:
@@ -1180,14 +1239,20 @@ async def harmonize(req, resp):
     with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as f:
         f.write(body)
         path = f.name
+    clean_path = None
     try:
-        score = Score.from_wav(path, **kwargs)
+        clean_path = _cleaned_wav_path(path, cutoff=70.0)
+        kwargs.setdefault("fmin", 70.0)
+        score = Score.from_wav(clean_path, **kwargs)
         from pytheory.audio import load_wav
-        original, original_rate = load_wav(path)
+        # the cleaned take is also what we mix under the accompaniment
+        original, original_rate = load_wav(clean_path)
     except Exception as e:
         return error(resp, 422, f"Couldn't transcribe audio: {e}")
     finally:
         os.unlink(path)
+        if clean_path and os.path.exists(clean_path):
+            os.unlink(clean_path)
 
     melody = score.parts.get("melody")
     notes = (getattr(melody, "notes", None) or getattr(melody, "_notes", [])) if melody else []

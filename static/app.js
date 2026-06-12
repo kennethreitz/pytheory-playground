@@ -780,8 +780,10 @@ function setupRecorder(buttonId, statusId, onBlob) {
 
   async function start() {
     try {
+      // recordings survive noisy rooms much better with the browser's
+      // noise suppression and auto-gain in front of them
       r.stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
     } catch (e) {
       status.textContent = `microphone access denied: ${e.message}`;
@@ -1028,8 +1030,10 @@ async function tunerStart() {
   if ($("tuner-system").value === "western" && await tryNativeTuner()) return;
   tuner.mode = "mic";
   try {
+    // noise suppression keeps room hum out of the pitch tracker; echo
+    // cancellation stops the reference tones from feeding back into it
     tuner.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
   } catch (e) {
     $("tuner-error").textContent = `Microphone access denied: ${e.message}`;
