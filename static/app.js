@@ -922,8 +922,44 @@ async function refreshTunerStrings() {
   }
 }
 
+let strobePhase = 0;
+let strobeRaf = null;
+let strobeLast = 0;
+
+function strobeFrame(ts) {
+  if (!tuner.running || $("tuner-display-mode").value !== "strobe") {
+    strobeRaf = null;
+    return;
+  }
+  const dt = strobeLast ? (ts - strobeLast) / 1000 : 0;
+  strobeLast = ts;
+  const cents = tuner.lastCents;
+  if (cents !== null) {
+    // drift speed tracks the detune; dead-on means a frozen band
+    strobePhase = (strobePhase + cents * 6 * dt) % 28;
+    $("strobe-band").style.transform = `translateX(${strobePhase}px)`;
+    $("tuner-strobe").classList.toggle("in-tune", Math.abs(cents) < 1);
+    $("tuner-strobe").style.opacity = "1";
+  } else {
+    $("tuner-strobe").style.opacity = "0.35";
+    $("tuner-strobe").classList.remove("in-tune");
+  }
+  strobeRaf = requestAnimationFrame(strobeFrame);
+}
+
+function syncTunerDisplay() {
+  const strobe = $("tuner-display-mode").value === "strobe";
+  $("tuner-track-needle").classList.toggle("hidden", strobe);
+  $("tuner-strobe").classList.toggle("hidden", !strobe);
+  if (strobe && tuner.running && !strobeRaf) {
+    strobeLast = 0;
+    strobeRaf = requestAnimationFrame(strobeFrame);
+  }
+}
+
 function tunerUpdate(d) {
   const needle = $("tuner-needle");
+  tuner.lastCents = d.voiced ? d.cents : null;
   if (!d.voiced) {
     $("tuner-note").textContent = "—";
     $("tuner-freq").textContent = "listening for a note…";
@@ -1001,6 +1037,7 @@ async function tryNativeTuner() {
           tuner.mode = "sse";
           $("tuner-toggle").textContent = "■ Stop tuner";
           $("tuner-mode").textContent = "native tuner — server mic, 20 readings/sec";
+          syncTunerDisplay();
           resolve(true);
         }
         const d = JSON.parse(e.data);
@@ -1045,6 +1082,7 @@ async function tunerStart() {
   tuner.running = true;
   tuner.timer = setInterval(tunerTick, 200);
   $("tuner-toggle").textContent = "■ Stop tuner";
+  syncTunerDisplay();
   $("tuner-mode").textContent = "browser mic"
     + (tuner.nativeFailure ? ` (native tuner unavailable: ${tuner.nativeFailure})` : "");
 }
@@ -1486,6 +1524,7 @@ async function boot() {
     $(id).addEventListener("change", refreshTunerStrings));
   $("tuner-toggle").addEventListener("click", () =>
     tuner.running ? tunerStop() : tunerStart());
+  $("tuner-display-mode").addEventListener("change", syncTunerDisplay);
   refreshTunerStrings();
 
   $("chord-play").addEventListener("click", (e) => {

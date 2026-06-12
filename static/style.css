@@ -290,6 +290,25 @@ input[type="range"] { accent-color: var(--accent); }
   transition: left 0.08s linear, background 0.15s; /* readings arrive 20×/sec */
 }
 .tuner-needle.in-tune { background: #3fb950; }
+
+/* strobe display: the band drifts toward sharp/flat, freezes in tune */
+.tuner-strobe {
+  position: relative; height: 44px; overflow: hidden;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--code-bg);
+}
+.strobe-band {
+  position: absolute; inset: 0; width: 200%;
+  background: repeating-linear-gradient(90deg,
+    var(--ink) 0 14px, transparent 14px 28px);
+  opacity: 0.55;
+  will-change: transform;
+}
+.tuner-strobe.in-tune .strobe-band {
+  background: repeating-linear-gradient(90deg,
+    #3fb950 0 14px, transparent 14px 28px);
+  opacity: 0.8;
+}
+.tuner-strobe .tuner-center { background: var(--accent); width: 2px; }
 .tuner-verdict { margin-top: 0.6rem; font-style: italic; color: var(--muted); min-height: 1.4em; }
 
 /* about page */

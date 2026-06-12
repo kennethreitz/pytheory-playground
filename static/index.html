@@ -176,6 +176,12 @@
             <option>442</option><option>444</option>
           </select>
         </label>
+        <label>Display
+          <select id="tuner-display-mode">
+            <option value="needle" selected>needle</option>
+            <option value="strobe">strobe</option>
+          </select>
+        </label>
         <button id="tuner-toggle" class="play">&#127908; Start tuner</button>
       </div>
       <div class="results">
@@ -195,9 +201,13 @@ tuner.onmessage = (e) => {
               <div class="tuner-scale">
                 <span>-50&cent;</span><span>0</span><span>+50&cent;</span>
               </div>
-              <div class="tuner-track">
+              <div class="tuner-track" id="tuner-track-needle">
                 <div class="tuner-center"></div>
                 <div class="tuner-needle" id="tuner-needle"></div>
+              </div>
+              <div class="tuner-strobe hidden" id="tuner-strobe">
+                <div class="strobe-band" id="strobe-band"></div>
+                <div class="tuner-center"></div>
               </div>
               <div class="tuner-verdict" id="tuner-verdict"></div>
               <div class="hint" id="tuner-mode"></div>
@@ -454,9 +464,9 @@ tuner.onmessage = (e) => {
             <button id="se-right" class="secondary" title="Move later">move &rarr;</button>
             <button id="se-dup" class="secondary">&#10697; duplicate</button>
             <button id="se-del" class="secondary">&#10005; remove</button>
-            <button id="song-add" class="secondary">+ new section</button>
           </div>
         </div>
+        <button id="song-add" class="secondary" style="margin-top:0.6rem">+ new section</button>
         <div class="controls" style="margin-top:1.25rem">
           <button id="song-play" class="play">&#9654; Play song</button>
           <button id="song-midi" class="secondary">&#8681; MIDI</button>
