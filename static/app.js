@@ -1692,6 +1692,7 @@ async function boot() {
     o.textContent = s === "" ? "sine (pure)" : s.replaceAll("_", " ");
     $("sound").appendChild(o);
   }
+  if (META.sounds.includes("electric_piano")) $("sound").value = "electric_piano";
 
   // tab switching (with #hash deep links + shareable state params)
   const showPanel = (name) => {
