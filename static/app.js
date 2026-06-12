@@ -1515,6 +1515,7 @@ async function boot() {
   // songwriter
   fill($("song-tonic"), META.roots, "C");
   fill($("song-sound"), META.sounds, "electric_piano");
+  [...$("song-sound").options].forEach((o) => (o.textContent = o.textContent.replaceAll("_", " ")));
   fill($("song-fill"), ["none", ...META.drum_fills], "none");
   for (const name of Object.keys(META.progressions)) {
     const o = document.createElement("option");
