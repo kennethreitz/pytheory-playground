@@ -310,3 +310,11 @@ footer {
 .alt-voicing { cursor: pointer; border-radius: 6px; padding: 2px; transition: background 0.15s; }
 .alt-voicing:hover { background: var(--code-bg); }
 #gscale-board { display: block; width: 100%; height: auto; }
+
+/* mobile */
+#circle-fifths { max-width: 100%; height: auto; }
+#key-table-wrap { overflow-x: auto; }
+@media (max-width: 640px) {
+  header, main, footer { padding-left: 1rem; padding-right: 1rem; }
+  h1 { font-size: 2rem; }
+}

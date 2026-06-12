@@ -720,7 +720,7 @@ function setupConverter(prefix, buildRequest) {
     btn.disabled = true;
     $(`${prefix}-error`).textContent = "";
     try {
-      const r = await fetch("/api/tools/lilypond-pdf", {
+      const r = await fetch(`/api/tools/lilypond-pdf?sig=${state.outputs.lilypond_sig || ""}`, {
         method: "POST",
         headers: { "Content-Type": "text/plain" },
         body: state.outputs.lilypond,
@@ -753,8 +753,8 @@ async function fileBody(inputId, errorMessage) {
 
 /* ---------- in-browser recording (raw PCM → WAV, no codecs needed) ---------- */
 
-const recorder = { active: false, ctx: null, stream: null, node: null, chunks: [], timer: null, blob: null };
 const REC_MAX_SECONDS = 30;
+let audioRecording = null; // most recent recording for the audio converter
 
 function encodeWav(chunks, rate) {
   let len = 0;
@@ -773,53 +773,110 @@ function encodeWav(chunks, rate) {
   return new Blob([buf], { type: "audio/wav" });
 }
 
-async function recordStart() {
-  $("audio-error").textContent = "";
-  try {
-    recorder.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-    });
-  } catch (e) {
-    $("audio-error").textContent = `Microphone access denied: ${e.message}`;
-    return;
+// Independent mic recorder bound to a button + status line; onBlob gets a WAV.
+function setupRecorder(buttonId, statusId, onBlob) {
+  const r = { active: false, ctx: null, stream: null, node: null, chunks: [], timer: null };
+  const btn = $(buttonId), status = $(statusId);
+
+  async function start() {
+    try {
+      r.stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      });
+    } catch (e) {
+      status.textContent = `microphone access denied: ${e.message}`;
+      return;
+    }
+    r.ctx = new AudioContext();
+    const source = r.ctx.createMediaStreamSource(r.stream);
+    r.node = r.ctx.createScriptProcessor(4096, 1, 1);
+    r.chunks = [];
+    r.node.onaudioprocess = (e) => {
+      if (r.active) r.chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    };
+    source.connect(r.node);
+    r.node.connect(r.ctx.destination);
+    r.active = true;
+    btn.innerHTML = "&#9632; Stop recording";
+    const started = performance.now();
+    r.timer = setInterval(() => {
+      const s = (performance.now() - started) / 1000;
+      status.textContent = `recording… ${s.toFixed(0)}s`;
+      if (s >= REC_MAX_SECONDS) stop();
+    }, 250);
   }
-  recorder.ctx = new AudioContext();
-  const source = recorder.ctx.createMediaStreamSource(recorder.stream);
-  recorder.node = recorder.ctx.createScriptProcessor(4096, 1, 1);
-  recorder.chunks = [];
-  recorder.node.onaudioprocess = (e) => {
-    if (recorder.active) recorder.chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-  };
-  source.connect(recorder.node);
-  recorder.node.connect(recorder.ctx.destination);
-  recorder.active = true;
-  $("audio-record").innerHTML = "&#9632; Stop recording";
-  const started = performance.now();
-  recorder.timer = setInterval(() => {
-    const s = (performance.now() - started) / 1000;
-    $("audio-rec-status").textContent = `recording… ${s.toFixed(0)}s`;
-    if (s >= REC_MAX_SECONDS) recordStop();
-  }, 250);
+
+  function stop() {
+    r.active = false;
+    clearInterval(r.timer);
+    const rate = r.ctx.sampleRate;
+    r.node?.disconnect();
+    r.ctx?.close();
+    r.stream?.getTracks().forEach((t) => t.stop());
+    btn.innerHTML = "&#9679; Record";
+    const seconds = r.chunks.reduce((n, c) => n + c.length, 0) / rate;
+    if (seconds < 0.5) {
+      status.textContent = "too short — try again";
+      return;
+    }
+    status.textContent = `recorded ${seconds.toFixed(1)}s…`;
+    onBlob(encodeWav(r.chunks, rate), seconds);
+    r.chunks = [];
+  }
+
+  btn.addEventListener("click", () => (r.active ? stop() : start()));
 }
 
-function recordStop() {
-  recorder.active = false;
-  clearInterval(recorder.timer);
-  const rate = recorder.ctx.sampleRate;
-  recorder.node?.disconnect();
-  recorder.ctx?.close();
-  recorder.stream?.getTracks().forEach((t) => t.stop());
-  $("audio-record").innerHTML = "&#9679; Record";
-  const seconds = recorder.chunks.reduce((n, c) => n + c.length, 0) / rate;
-  if (seconds < 0.5) {
-    $("audio-rec-status").textContent = "too short — try again";
-    recorder.blob = null;
-    return;
+/* ---------- hum it → harmonize it ---------- */
+
+let harmData = null;
+
+async function harmonizeBody(body, filename) {
+  $("harm-error").textContent = "";
+  $("harm-go").disabled = true;
+  try {
+    const r = await fetch(`/api/tools/harmonize?filename=${encodeURIComponent(filename)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body,
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || r.statusText);
+    harmData = d;
+    $("harm-result").classList.remove("hidden");
+    $("harm-summary").textContent =
+      `${d.key} · ${Math.round(d.bpm)} bpm · ${d.bars} bar${d.bars === 1 ? "" : "s"} · ${d.melody_notes} notes heard`;
+    pillRow($("harm-chords"), d.chords.map((sym, i) => ({ sym, i })), (pill, c) => {
+      pill.innerHTML = `<small>bar ${c.i + 1}</small> ${c.sym}`;
+    });
+    $("harm-audio").src = `data:audio/wav;base64,${d.audio_b64}`;
+  } catch (e) {
+    $("harm-error").textContent = e.message;
+  } finally {
+    $("harm-go").disabled = false;
+    $("harm-rec-status").textContent = "or choose a file:";
   }
-  recorder.blob = encodeWav(recorder.chunks, rate);
-  recorder.chunks = [];
-  $("audio-rec-status").textContent = `recorded ${seconds.toFixed(1)}s — transcribing…`;
-  $("audio-convert").click();
+}
+
+async function engraveSource(source, sig, btn, errId) {
+  btn.disabled = true;
+  $(errId).textContent = "";
+  try {
+    const r = await fetch(`/api/tools/lilypond-pdf?sig=${sig || ""}`, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: source,
+    });
+    if (!r.ok) {
+      const data = await r.json();
+      throw new Error(data.error || r.statusText);
+    }
+    window.open(URL.createObjectURL(await r.blob()), "_blank");
+  } catch (e) {
+    $(errId).textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 /* ---------- tuner ---------- */
@@ -1368,8 +1425,8 @@ async function boot() {
   });
   setupConverter("audio", async () => {
     let body, filename;
-    if (recorder.blob) {
-      body = await recorder.blob.arrayBuffer();
+    if (audioRecording) {
+      body = await audioRecording.arrayBuffer();
       filename = "recording.wav";
     } else {
       const f = await fileBody("audio-file", "Record something or choose an audio file first.");
@@ -1384,11 +1441,32 @@ async function boot() {
       body,
     };
   });
-  $("audio-record").addEventListener("click", () =>
-    recorder.active ? recordStop() : recordStart());
+  setupRecorder("audio-record", "audio-rec-status", (blob) => {
+    audioRecording = blob;
+    $("audio-rec-status").textContent += " transcribing…";
+    $("audio-convert").click();
+  });
   $("audio-file").addEventListener("change", () => {
-    recorder.blob = null; // a chosen file takes over from any recording
+    audioRecording = null; // a chosen file takes over from any recording
     $("audio-rec-status").textContent = "or choose a file:";
+  });
+  setupRecorder("harm-record", "harm-rec-status", (blob) =>
+    blob.arrayBuffer().then((b) => harmonizeBody(b, "recording.wav")));
+  $("harm-go").addEventListener("click", async () => {
+    try {
+      const { file, body } = await fileBody("harm-file", "Record something or choose an audio file first.");
+      harmonizeBody(body, file.name);
+    } catch (e) {
+      $("harm-error").textContent = e.message;
+    }
+  });
+  $("harm-midi").addEventListener("click", () => {
+    if (!harmData?.midi_b64) return;
+    const bytes = Uint8Array.from(atob(harmData.midi_b64), (c) => c.charCodeAt(0));
+    downloadBlob(new Blob([bytes], { type: "audio/midi" }), "harmonized.mid");
+  });
+  $("harm-pdf").addEventListener("click", (e) => {
+    if (harmData?.lilypond) engraveSource(harmData.lilypond, harmData.lilypond_sig, e.target, "harm-error");
   });
 
   refreshChord();

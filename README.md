@@ -53,6 +53,9 @@ $ docker run -p 5042:5042 pytheory-playground
   control, optional chord backing in any key, server-rendered audio, and
   MIDI export.
 - **Tools**
+  - *Hum it → harmonize it* — record a melody; pytheory transcribes it,
+    detects the key, picks a chord for every bar, and plays it back with
+    piano and bass — downloadable as MIDI or engraved sheet music.
   - *Chord identifier* — fret positions (any instrument/tuning) → chord name.
   - *Progression analyzer* — chord symbols → Roman-numeral analysis.
   - *Key detector* — note names → most likely key.
@@ -86,7 +89,8 @@ Everything the UI does is a plain JSON/WAV/PDF endpoint:
 | `GET /api/tools/analyze` / `GET /api/tools/detect-key` | Numerals / key |
 | `POST /api/tools/midi-convert` (raw MIDI) | LilyPond, ABC, MusicXML, tab |
 | `POST /api/tools/audio-convert` (raw audio) | Transcribed score in all formats + MIDI |
-| `POST /api/tools/lilypond-pdf` (LilyPond source) | Engraved PDF |
+| `POST /api/tools/harmonize` (raw audio) | Melody + auto-chords arrangement, audio + notation |
+| `POST /api/tools/lilypond-pdf?sig=…` (server-generated LilyPond) | Engraved PDF |
 | `POST /api/tuner/start` / `stop` | pytheory's native tuner (SSE at `:8123/stream`) |
 | `POST /api/tools/tune?rate=&system=` (raw float32 PCM) | Pitch → note + cents, any system |
 | `GET /api/tuner/strings?instrument=&tuning=&capo=` | Open-string reference tones |

@@ -337,6 +337,7 @@ tuner.onmessage = (e) => {
         </div>
         <div class="card wide">
           <h3 id="key-title">—</h3>
+          <div id="key-table-wrap">
           <table id="key-table">
             <thead><tr id="key-numerals"></tr></thead>
             <tbody>
@@ -344,6 +345,7 @@ tuner.onmessage = (e) => {
               <tr id="key-sevenths"></tr>
             </tbody>
           </table>
+          </div>
           <p id="key-extra" class="tones"></p>
         </div>
         <div class="card wide">
@@ -432,6 +434,28 @@ tuner.onmessage = (e) => {
 
     <!-- ============ Tools ============ -->
     <section id="panel-tools" class="panel">
+      <div class="card wide" id="harmonize-card">
+        <h3>Hum it &rarr; harmonize it <small>Score.from_wav · Key.detect · scale.harmonize()</small></h3>
+        <p class="hint">Hum or whistle a melody. pytheory transcribes it, detects the key, picks a
+          chord for every bar, and plays your tune back with piano and bass — printable as sheet music.</p>
+        <div class="controls">
+          <button id="harm-record" class="play">&#9679; Record</button>
+          <span class="hint" id="harm-rec-status">or choose a file:</span>
+          <input type="file" id="harm-file" accept=".wav,.m4a,.mp3,audio/*">
+          <button id="harm-go" class="secondary">Harmonize file</button>
+        </div>
+        <div id="harm-result" class="hidden">
+          <p id="harm-summary" class="tones"></p>
+          <div id="harm-chords" class="note-row"></div>
+          <audio id="harm-audio" controls style="width:100%; margin-top:0.85rem"></audio>
+          <div style="margin-top:0.6rem">
+            <button id="harm-midi" class="secondary">&#8681; MIDI</button>
+            <button id="harm-pdf" class="play">&#9836; Sheet music PDF</button>
+          </div>
+        </div>
+        <p class="error" id="harm-error"></p>
+      </div>
+
       <div class="card wide">
         <h3>Note inspector <small>Tone.solfege · .helmholtz · .overtones(…)</small></h3>
         <div class="controls">

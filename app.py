@@ -1,7 +1,10 @@
 """PyTheory Playground — interactive showcase backed by real pytheory code."""
 
+import hashlib
+import hmac
 import io
 import os
+import secrets
 import tempfile
 import wave
 
@@ -67,6 +70,15 @@ SYSTEM_META = _system_meta()
 SCALE_NAMES = SYSTEM_META["western"]["scales"]
 
 api = responder.API(static_dir="static", static_route="/static")
+
+# LilyPond embeds Guile Scheme, so engraving arbitrary user source would be
+# remote code execution. We only engrave LilyPond we generated ourselves,
+# proven by an HMAC signature minted alongside each conversion result.
+_LILYPOND_KEY = secrets.token_bytes(32)
+
+
+def _sign_lilypond(source: str) -> str:
+    return hmac.new(_LILYPOND_KEY, source.encode(), hashlib.sha256).hexdigest()
 
 
 def wav_bytes(audio: np.ndarray) -> bytes:
@@ -948,6 +960,7 @@ def _score_outputs(score, title, key="auto", mode="major"):
            "key": f"{key} {mode}"}
     try:
         out["lilypond"] = score.to_lilypond(title=title, key=key, mode=mode)
+        out["lilypond_sig"] = _sign_lilypond(out["lilypond"])
     except Exception as e:
         out["lilypond"] = f"LilyPond export failed: {e}"
     try:
@@ -1147,6 +1160,101 @@ async def tune(req, resp):
     }
 
 
+@api.route("/api/tools/harmonize")
+async def harmonize(req, resp):
+    """Hum a melody → transcription, key detection, per-bar chords, and a
+    full arrangement (melody + chords + bass) with audio and notation."""
+    import base64
+    import math
+    from collections import defaultdict
+
+    body = await req.content
+    if not body:
+        return error(resp, 400, "Upload or record some audio first.")
+    ext = os.path.splitext(req.params.get("filename", ""))[1].lower() or ".wav"
+    title = req.params.get("title", "Harmonized melody")
+    kwargs = {"quantize": float(req.params.get("quantize", "0.25") or 0.25)}
+    if req.params.get("bpm"):
+        kwargs["bpm"] = float(req.params["bpm"])
+
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as f:
+        f.write(body)
+        path = f.name
+    try:
+        score = Score.from_wav(path, **kwargs)
+    except Exception as e:
+        return error(resp, 422, f"Couldn't transcribe audio: {e}")
+    finally:
+        os.unlink(path)
+
+    melody = score.parts.get("melody")
+    notes = (getattr(melody, "notes", None) or getattr(melody, "_notes", [])) if melody else []
+    pitched = [n for n in notes if getattr(n, "tone", None) is not None
+               and hasattr(n.tone, "midi")]
+    if not pitched:
+        return error(resp, 422, "Couldn't hear a melody in that recording — try again closer to the mic.")
+
+    key = _detect_score_key(score) or Key("C")
+    mode = key.mode if key.mode in ("major", "minor") else "major"
+    candidates = [c for c in TonedScale(tonic=f"{key.tonic_name}4")[mode].harmonize()
+                  if c is not None]
+
+    # Collect melody pitch classes per 4-beat bar.
+    bar_pcs = defaultdict(set)
+    beat = 0.0
+    for n in notes:
+        dur = float(n.duration.value)
+        tone = getattr(n, "tone", None)
+        if tone is not None and hasattr(tone, "midi"):
+            for b in range(int(beat // 4), int(max(beat, beat + dur - 1e-9) // 4) + 1):
+                bar_pcs[b].add(tone.midi % 12)
+        beat += dur
+    n_bars = max(1, math.ceil(score.total_beats / 4))
+
+    # Pick the diatonic chord that best covers each bar's melody notes.
+    chosen = []
+    for b in range(n_bars):
+        pcs = bar_pcs.get(b, set())
+        if not pcs:
+            chosen.append(chosen[-1] if chosen else candidates[0])
+            continue
+        def fit(c):
+            root = c.root if getattr(c, "root", None) is not None else c.tones[0]
+            return (len(pcs & c.pitch_classes) * 2
+                    + (1 if root.midi % 12 in pcs else 0))
+        chosen.append(max(candidates, key=fit))
+
+    # Accompaniment: block chords + a root bass line under the melody.
+    chords_part = score.part("chords", instrument="electric_piano",
+                             volume=0.35, reverb=0.2)
+    bass_part = score.part("bass", instrument="upright_bass", volume=0.5)
+    for ch in chosen:
+        chords_part.add(ch, 4.0)
+        root = ch.root if getattr(ch, "root", None) is not None else ch.tones[0]
+        bass_part.add(Tone.from_midi(max(28, root.midi - 12)), 4.0)
+
+    out = _score_outputs(score, title, key.tonic_name, mode)
+    out.update({
+        "key": str(key),
+        "bpm": score.bpm,
+        "bars": n_bars,
+        "chords": [c.symbol for c in chosen],
+        "melody_notes": len(pitched),
+        "audio_b64": base64.b64encode(wav_bytes(render_score(score))).decode(),
+    })
+    with tempfile.NamedTemporaryFile(suffix=".mid", delete=False) as f:
+        midi_path = f.name
+    try:
+        score.save_midi(midi_path)
+        with open(midi_path, "rb") as f:
+            out["midi_b64"] = base64.b64encode(f.read()).decode()
+    except Exception:
+        out["midi_b64"] = None
+    finally:
+        os.unlink(midi_path)
+    resp.media = out
+
+
 @api.route("/api/tools/lilypond-pdf")
 async def lilypond_pdf(req, resp):
     """POST LilyPond source; returns engraved PDF (requires the lilypond binary)."""
@@ -1158,6 +1266,10 @@ async def lilypond_pdf(req, resp):
     body = await req.content
     if not body:
         return error(resp, 400, "POST LilyPond source as the request body.")
+    # Only engrave sources this server generated (LilyPond can run Scheme).
+    sig = req.params.get("sig", "")
+    if not hmac.compare_digest(sig, _sign_lilypond(body.decode("utf-8", "replace"))):
+        return error(resp, 403, "Signature mismatch — only server-generated LilyPond can be engraved.")
     with tempfile.TemporaryDirectory() as tmp:
         src = os.path.join(tmp, "score.ly")
         with open(src, "wb") as f:
