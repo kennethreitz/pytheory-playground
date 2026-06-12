@@ -270,7 +270,7 @@ tuner.onmessage = (e) => {
           <select id="key-progression"></select>
         </label>
         <button id="prog-play" class="play">&#9654; Play</button>
-        <button id="prog-midi">&#8681; MIDI</button>
+        <button id="prog-midi" class="secondary">&#8681; MIDI</button>
       </div>
       <div class="results">
         <div class="card wide">
@@ -334,7 +334,7 @@ tuner.onmessage = (e) => {
         <label>BPM
           <input type="number" id="groove-bpm" value="100" min="40" max="240" style="width:5rem">
         </label>
-        <label>Swing <span id="groove-swing-label" class="mono-val">0</span>
+        <label><span>Swing <span id="groove-swing-label" class="mono-val">0</span></span>
           <input type="range" id="groove-swing" min="0" max="0.6" step="0.05" value="0">
         </label>
         <label>Bars
@@ -362,7 +362,7 @@ tuner.onmessage = (e) => {
           <select id="groove-mode"><option selected>major</option><option>minor</option></select>
         </label>
         <button id="groove-play" class="play">&#9654; Play groove</button>
-        <button id="groove-midi">&#8681; MIDI</button>
+        <button id="groove-midi" class="secondary">&#8681; MIDI</button>
       </div>
       <div class="card wide">
         <h3>Groove Lab <small>score.drums(preset, fill=…) · Score(swing=…)</small></h3>
@@ -431,6 +431,8 @@ tuner.onmessage = (e) => {
         <p class="hint">Hum a melody, whistle a hook, or record a bass line — monophonic
           transcription via YIN pitch tracking. WAV, m4a voice memos, and mp3 all work.</p>
         <div class="controls">
+          <button id="audio-record" class="play">&#9679; Record</button>
+          <span class="hint" id="audio-rec-status">or choose a file:</span>
           <input type="file" id="audio-file" accept=".wav,.m4a,.mp3,.aiff,.flac,audio/*">
           <label>Title <input type="text" id="audio-title" value="Transcribed audio"></label>
           <label>Timing
@@ -452,9 +454,9 @@ tuner.onmessage = (e) => {
             <button data-fmt="tab">ASCII Tab</button>
           </nav>
           <pre id="audio-output"></pre>
-          <button id="audio-download">&#8681; Download</button>
-          <button id="audio-pdf" class="hidden">&#9836; Engrave PDF</button>
-          <button id="audio-midi-dl" class="hidden">&#8681; MIDI</button>
+          <button id="audio-download" class="secondary">&#8681; Download</button>
+          <button id="audio-pdf" class="play hidden">&#9836; Engrave PDF</button>
+          <button id="audio-midi-dl" class="secondary hidden">&#8681; MIDI</button>
         </div>
         <p class="error" id="audio-error"></p>
       </div>
@@ -478,8 +480,8 @@ tuner.onmessage = (e) => {
             <button data-fmt="tab">ASCII Tab</button>
           </nav>
           <pre id="midi-output"></pre>
-          <button id="midi-download">&#8681; Download</button>
-          <button id="midi-pdf" class="hidden">&#9836; Engrave PDF</button>
+          <button id="midi-download" class="secondary">&#8681; Download</button>
+          <button id="midi-pdf" class="play hidden">&#9836; Engrave PDF</button>
         </div>
         <p class="error" id="midi-error"></p>
         <p class="hint">No MIDI handy? Grab one from the Keys &amp; Progressions tab with the MIDI button.</p>

@@ -606,6 +606,77 @@ async function fileBody(inputId, errorMessage) {
   return { file, body: await file.arrayBuffer() };
 }
 
+/* ---------- in-browser recording (raw PCM → WAV, no codecs needed) ---------- */
+
+const recorder = { active: false, ctx: null, stream: null, node: null, chunks: [], timer: null, blob: null };
+const REC_MAX_SECONDS = 30;
+
+function encodeWav(chunks, rate) {
+  let len = 0;
+  for (const c of chunks) len += c.length;
+  const buf = new ArrayBuffer(44 + len * 2);
+  const v = new DataView(buf);
+  const tag = (off, s) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+  tag(0, "RIFF"); v.setUint32(4, 36 + len * 2, true); tag(8, "WAVE");
+  tag(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  tag(36, "data"); v.setUint32(40, len * 2, true);
+  const pcm = new Int16Array(buf, 44);
+  let o = 0;
+  for (const c of chunks)
+    for (let i = 0; i < c.length; i++) pcm[o++] = Math.max(-1, Math.min(1, c[i])) * 0x7fff;
+  return new Blob([buf], { type: "audio/wav" });
+}
+
+async function recordStart() {
+  $("audio-error").textContent = "";
+  try {
+    recorder.stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    });
+  } catch (e) {
+    $("audio-error").textContent = `Microphone access denied: ${e.message}`;
+    return;
+  }
+  recorder.ctx = new AudioContext();
+  const source = recorder.ctx.createMediaStreamSource(recorder.stream);
+  recorder.node = recorder.ctx.createScriptProcessor(4096, 1, 1);
+  recorder.chunks = [];
+  recorder.node.onaudioprocess = (e) => {
+    if (recorder.active) recorder.chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  };
+  source.connect(recorder.node);
+  recorder.node.connect(recorder.ctx.destination);
+  recorder.active = true;
+  $("audio-record").innerHTML = "&#9632; Stop recording";
+  const started = performance.now();
+  recorder.timer = setInterval(() => {
+    const s = (performance.now() - started) / 1000;
+    $("audio-rec-status").textContent = `recording… ${s.toFixed(0)}s`;
+    if (s >= REC_MAX_SECONDS) recordStop();
+  }, 250);
+}
+
+function recordStop() {
+  recorder.active = false;
+  clearInterval(recorder.timer);
+  const rate = recorder.ctx.sampleRate;
+  recorder.node?.disconnect();
+  recorder.ctx?.close();
+  recorder.stream?.getTracks().forEach((t) => t.stop());
+  $("audio-record").innerHTML = "&#9679; Record";
+  const seconds = recorder.chunks.reduce((n, c) => n + c.length, 0) / rate;
+  if (seconds < 0.5) {
+    $("audio-rec-status").textContent = "too short — try again";
+    recorder.blob = null;
+    return;
+  }
+  recorder.blob = encodeWav(recorder.chunks, rate);
+  recorder.chunks = [];
+  $("audio-rec-status").textContent = `recorded ${seconds.toFixed(1)}s — transcribing…`;
+  $("audio-convert").click();
+}
+
 /* ---------- tuner ---------- */
 
 const tuner = {
@@ -977,6 +1048,7 @@ async function boot() {
       showPanel(b.dataset.panel);
     }));
   if (location.hash) showPanel(location.hash.slice(1));
+  window.addEventListener("hashchange", () => showPanel(location.hash.slice(1)));
   document.querySelectorAll("a.goto").forEach((a) =>
     a.addEventListener("click", (e) => {
       e.preventDefault();
@@ -1078,14 +1150,28 @@ async function boot() {
     return { url: `/api/tools/midi-convert?title=${title}&key=${key}`, body };
   });
   setupConverter("audio", async () => {
-    const { file, body } = await fileBody("audio-file", "Choose an audio file first.");
+    let body, filename;
+    if (recorder.blob) {
+      body = await recorder.blob.arrayBuffer();
+      filename = "recording.wav";
+    } else {
+      const f = await fileBody("audio-file", "Record something or choose an audio file first.");
+      body = f.body;
+      filename = f.file.name;
+    }
     const title = encodeURIComponent($("audio-title").value || "Transcribed audio");
     const q = $("audio-quantize").value ? `&quantize=${$("audio-quantize").value}` : "";
     const split = $("audio-split").checked ? "&split=1" : "";
     return {
-      url: `/api/tools/audio-convert?title=${title}&filename=${encodeURIComponent(file.name)}${q}${split}`,
+      url: `/api/tools/audio-convert?title=${title}&filename=${encodeURIComponent(filename)}${q}${split}`,
       body,
     };
+  });
+  $("audio-record").addEventListener("click", () =>
+    recorder.active ? recordStop() : recordStart());
+  $("audio-file").addEventListener("change", () => {
+    recorder.blob = null; // a chosen file takes over from any recording
+    $("audio-rec-status").textContent = "or choose a file:";
   });
 
   refreshChord();
