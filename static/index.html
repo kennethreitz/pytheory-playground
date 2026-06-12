@@ -31,12 +31,17 @@
       <span id="version"></span> on the server.</p>
     <nav id="tabs">
       <button data-panel="about" class="active">About</button>
+      <span class="nav-sep"></span>
       <button data-panel="chords">Guitar Tab</button>
       <button data-panel="tuner">Tuner</button>
+      <span class="nav-sep"></span>
       <button data-panel="lab">Chord Lab</button>
       <button data-panel="scales">Scales</button>
       <button data-panel="keys">Keys &amp; Progressions</button>
+      <span class="nav-sep"></span>
       <button data-panel="song">Songwriter</button>
+      <button data-panel="harmonize">Harmonize</button>
+      <span class="nav-sep"></span>
       <button data-panel="tools">Tools</button>
       <label id="sound-wrap" title="Playback sound (pytheory synth presets)">&#9835;
         <select id="sound"></select>
@@ -72,6 +77,9 @@
           <li><a href="#song" class="goto" data-panel="song">Songwriter</a> — sketch a whole
             arrangement from a vibe: sections, one hundred drum grooves with fills, chord styles,
             bass, and fade-out, rendered as audio, MIDI, or engraved sheet music.</li>
+          <li><a href="#harmonize" class="goto" data-panel="harmonize">Harmonize</a> — hum or
+            whistle a melody and get it back with chords and bass underneath, plus printable
+            sheet music.</li>
           <li><a href="#tools" class="goto" data-panel="tools">Tools</a> — identify chords from
             fret positions, analyze progressions, detect keys, transcribe hummed or whistled
             recordings into notation, and convert MIDI to LilyPond (with PDF engraving), ABC,
@@ -373,8 +381,8 @@ tuner.onmessage = (e) => {
           <h3>Progression <small>key.progression(…)</small> <span id="prog-rolled" class="custom-note"></span></h3>
           <div id="prog-chords" class="prog-row"></div>
         </div>
-        <div class="card wide">
-          <h3>Beyond the key <small>key.borrowed_chords · key.secondary_dominant(…)</small></h3>
+        <details class="card wide">
+          <summary><h3>Beyond the key <small>key.borrowed_chords · key.secondary_dominant(…)</small></h3></summary>
           <h4>Borrowed (modal interchange)</h4>
           <div id="key-borrowed" class="note-row"></div>
           <h4>Secondary dominants</h4>
@@ -387,8 +395,8 @@ tuner.onmessage = (e) => {
             <span id="key-suggestions" class="note-row"></span>
           </div>
         </div>
-        <div class="card wide">
-          <h3>Modulation planner <small>key.modulation_path(…) · key.pivot_chords(…)</small></h3>
+        <details class="card wide">
+          <summary><h3>Modulation planner <small>key.modulation_path(…) · key.pivot_chords(…)</small></h3></summary>
           <div class="controls">
             <label>To key
               <select id="mod-tonic"></select>
@@ -400,7 +408,7 @@ tuner.onmessage = (e) => {
           </div>
           <div id="mod-path" class="note-row"></div>
           <p id="mod-pivots" class="tones"></p>
-        </div>
+        </details>
       </div>
       <p class="error" id="key-error"></p>
     </section>
@@ -486,8 +494,8 @@ tuner.onmessage = (e) => {
       <datalist id="progression-names"></datalist>
     </section>
 
-    <!-- ============ Tools ============ -->
-    <section id="panel-tools" class="panel">
+    <!-- ============ Harmonize ============ -->
+    <section id="panel-harmonize" class="panel">
       <div class="card wide" id="harmonize-card">
         <h3>Hum it &rarr; harmonize it <small>Score.from_wav · Key.detect · scale.harmonize()</small></h3>
         <p class="hint">Hum or whistle a melody. pytheory transcribes it, detects the key, picks a
@@ -510,6 +518,10 @@ tuner.onmessage = (e) => {
         <p class="error" id="harm-error"></p>
       </div>
 
+    </section>
+
+    <!-- ============ Tools ============ -->
+    <section id="panel-tools" class="panel">
       <div class="card wide">
         <h3>Note inspector <small>Tone.solfege · .helmholtz · .overtones(…)</small></h3>
         <div class="controls">

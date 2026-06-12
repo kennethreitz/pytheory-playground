@@ -386,3 +386,10 @@ footer {
 #chord-info table.kv td { padding: 0.35rem 1rem 0.35rem 0; }
 #chord-info .tones { font-size: 1rem; }
 #chord-info .hint { font-size: 0.95rem; }
+
+/* nav grouping + collapsible theory cards */
+.nav-sep { width: 1px; height: 0.95em; background: var(--line); align-self: center; }
+details.card > summary { cursor: pointer; list-style-position: outside; }
+details.card > summary h3 { display: inline; }
+details.card > summary::marker { color: var(--faint); }
+details.card[open] > summary { margin-bottom: 0.85rem; }

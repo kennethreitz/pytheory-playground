@@ -54,10 +54,10 @@ $ docker run -p 5042:5042 pytheory-playground
   per section (block / strummed / arpeggiated / drums only), a root-fifth
   bass line, swing, and a fade-out — fully editable, then rendered as audio,
   MIDI, or engraved sheet music.
+- **Harmonize** — hum or whistle a melody; pytheory transcribes it, detects
+  the key, picks a chord for every bar, and plays your recording back over
+  piano and bass — downloadable as MIDI or engraved sheet music.
 - **Tools**
-  - *Hum it → harmonize it* — record a melody; pytheory transcribes it,
-    detects the key, picks a chord for every bar, and plays it back with
-    piano and bass — downloadable as MIDI or engraved sheet music.
   - *Chord identifier* — fret positions (any instrument/tuning) → chord name.
   - *Progression analyzer* — chord symbols → Roman-numeral analysis.
   - *Key detector* — note names → most likely key.
