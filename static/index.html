@@ -193,7 +193,13 @@
             <option>442</option><option>444</option>
           </select>
         </label>
-        <label>Display
+        <label>Listen for
+          <select id="tuner-listen">
+            <option value="note" selected>a note (tune up)</option>
+            <option value="chord">a chord (name it)</option>
+          </select>
+        </label>
+        <label id="tuner-display-wrap">Display
           <select id="tuner-display-mode">
             <option value="needle" selected>needle</option>
             <option value="strobe">strobe</option>
@@ -203,7 +209,7 @@
       </div>
       <div class="results">
         <div class="card wide" id="tuner-card">
-          <h3>Tuner <small>pytheory.tuner.Tuner · analyze_frame(…)</small></h3>
+          <h3>Tuner <small id="tuner-api-hint">pytheory.tuner.Tuner · analyze_frame(…)</small></h3>
           <details class="hint">
             <summary>Tap the stream from your own JS — three lines</summary>
             <pre>const tuner = new EventSource("http://localhost:8123/stream");
@@ -215,7 +221,7 @@ tuner.onmessage = (e) => {
             <div class="tuner-note" id="tuner-note">&mdash;</div>
             <div class="tuner-freq" id="tuner-freq">listening for a note&hellip;</div>
             <div class="tuner-gauge">
-              <div class="tuner-scale">
+              <div class="tuner-scale" id="tuner-scale">
                 <span>-50&cent;</span><span>0</span><span>+50&cent;</span>
               </div>
               <div class="tuner-track" id="tuner-track-needle">
@@ -225,14 +231,18 @@ tuner.onmessage = (e) => {
               <div class="tuner-strobe hidden" id="tuner-strobe">
                 <canvas id="strobe-disc" width="340" height="340"></canvas>
               </div>
+              <div id="tuner-chord-notes" class="note-row tuner-chord-notes hidden"></div>
               <div class="tuner-verdict" id="tuner-verdict"></div>
               <div class="hint" id="tuner-mode"></div>
             </div>
           </div>
           <h4>Open strings <small>click to hear a reference tone</small></h4>
           <div id="tuner-strings" class="note-row"></div>
-          <p class="hint">Allow microphone access, play one string at a time, and tune until
-            the needle centers. Strings light up as you get close.</p>
+          <p class="hint" id="tuner-hint-note">Allow microphone access, play one string at a time,
+            and tune until the needle centers. Strings light up as you get close.</p>
+          <p class="hint hidden" id="tuner-hint-chord">Strum a chord and let it ring &mdash; pytheory
+            folds about a second of audio into a chromagram and matches it against major, minor,
+            sus, and 7th shapes on every root. Single notes are rejected on purpose.</p>
         </div>
       </div>
       <p class="error" id="tuner-error"></p>

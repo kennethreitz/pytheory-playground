@@ -1478,6 +1478,24 @@ async def tune(req, resp):
     }
 
 
+@api.route("/api/tools/identify-chord")
+async def tools_identify_chord(req, resp):
+    """Name the chord sounding in a raw float32 PCM chunk (the chord-ID mic loop).
+
+    Chromagram template matching via pytheory.audio.identify_chord; returns
+    chord: null when nothing polyphonic is confidently sounding.
+    """
+    from pytheory.audio import identify_chord
+
+    body = await req.content
+    if not body or len(body) < 8192:
+        resp.media = {"chord": None}
+        return
+    rate = int(req.params.get("rate", "48000"))
+    samples = np.frombuffer(body, dtype=np.float32).astype(np.float64)
+    resp.media = {"chord": identify_chord(samples, rate)}
+
+
 @api.route("/api/tools/harmonize")
 async def harmonize(req, resp):
     """Hum a melody → transcription, key detection, per-bar chords, and a

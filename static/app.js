@@ -915,7 +915,10 @@ const tuner = {
   timer: null,
   strings: [],
   busy: false,
+  lastChord: null,
 };
+
+const tunerChordMode = () => $("tuner-listen").value === "chord";
 
 function tunerQuery() {
   const t = $("tuner-tuning").value;
@@ -961,7 +964,7 @@ let strobeRaf = null;
 let strobeLast = 0;
 
 function strobeFrame(now) {
-  if (!tuner.running || $("tuner-display-mode").value !== "strobe") {
+  if (!tuner.running || tunerChordMode() || $("tuner-display-mode").value !== "strobe") {
     strobeRaf = null;
     return;
   }
@@ -990,12 +993,45 @@ function strobeFrame(now) {
 }
 
 function syncTunerDisplay() {
-  const strobe = $("tuner-display-mode").value === "strobe";
-  $("tuner-track-needle").classList.toggle("hidden", strobe);
+  const chord = tunerChordMode();
+  const strobe = !chord && $("tuner-display-mode").value === "strobe";
+  $("tuner-display-wrap").classList.toggle("hidden", chord);
+  $("tuner-scale").classList.toggle("hidden", chord);
+  $("tuner-track-needle").classList.toggle("hidden", strobe || chord);
   $("tuner-strobe").classList.toggle("hidden", !strobe);
+  $("tuner-chord-notes").classList.toggle("hidden", !chord);
+  $("tuner-hint-note").classList.toggle("hidden", chord);
+  $("tuner-hint-chord").classList.toggle("hidden", !chord);
+  $("tuner-api-hint").textContent = chord
+    ? "pytheory.audio.identify_chord(samples, rate)"
+    : "pytheory.tuner.Tuner · analyze_frame(…)";
+  if (!tuner.running)
+    $("tuner-toggle").textContent = chord ? "🎤 Identify chords" : "🎤 Start tuner";
   if (strobe && tuner.running && !strobeRaf) {
     strobeLast = 0;
     strobeRaf = requestAnimationFrame(strobeFrame);
+  }
+}
+
+function chordUpdate(d) {
+  const c = d.chord;
+  tuner.lastCents = null;
+  if (!c) {
+    $("tuner-note").textContent = "—";
+    $("tuner-freq").textContent = "strum a chord…";
+    $("tuner-verdict").textContent = "";
+    $("tuner-chord-notes").innerHTML = "";
+    tuner.lastChord = null;
+    return;
+  }
+  $("tuner-note").textContent = c.symbol;
+  $("tuner-freq").textContent = c.notes.join(" · ");
+  $("tuner-verdict").textContent = `${Math.round(c.confidence * 100)}% match`;
+  if (c.symbol !== tuner.lastChord) {
+    tuner.lastChord = c.symbol;
+    pillRow($("tuner-chord-notes"), c.notes);
+    $("tuner-chord-notes").appendChild(
+      playButton(`/api/chord/audio?name=${encodeURIComponent(c.symbol)}`));
   }
 }
 
@@ -1030,28 +1066,34 @@ function tunerUpdate(d) {
 
 async function tunerTick() {
   if (!tuner.running || tuner.busy) return;
-  // Rolling window: analyze the most recent ~0.35s without draining the
-  // buffer, so updates land every tick (~4-5/sec) instead of waiting for
-  // a fresh accumulation each time.
-  const need = Math.floor(tuner.ctx.sampleRate * 0.35);
+  // Rolling window: analyze the most recent slice without draining the
+  // buffer, so updates land every tick instead of waiting for a fresh
+  // accumulation each time. Pitch tracking reads ~0.35s; chord ID folds
+  // ~1s into a chromagram (identify_chord's sweet spot).
+  const chord = tunerChordMode();
+  const windowSec = chord ? 1.0 : 0.35;
+  const need = Math.floor(tuner.ctx.sampleRate * windowSec);
   let total = 0;
   for (const chunk of tuner.buffer) total += chunk.length;
   if (total < need) return;
   const all = new Float32Array(total);
   let off = 0;
   for (const chunk of tuner.buffer) { all.set(chunk, off); off += chunk.length; }
-  // trim the rolling buffer to the last ~0.5s
-  const keep = Math.floor(tuner.ctx.sampleRate * 0.5);
+  // trim the rolling buffer to just past the analysis window
+  const keep = Math.floor(tuner.ctx.sampleRate * (windowSec + 0.15));
   if (total > keep) tuner.buffer = [all.subarray(total - keep)];
   const slice = all.subarray(all.length - need);
   tuner.busy = true;
   try {
-    const r = await fetch(`/api/tools/tune?rate=${tuner.ctx.sampleRate}&system=${encodeURIComponent($("tuner-system").value)}&reference=${$("tuner-reference").value}`, {
+    const url = chord
+      ? `/api/tools/identify-chord?rate=${tuner.ctx.sampleRate}`
+      : `/api/tools/tune?rate=${tuner.ctx.sampleRate}&system=${encodeURIComponent($("tuner-system").value)}&reference=${$("tuner-reference").value}`;
+    const r = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/octet-stream" },
       body: slice.buffer.slice(slice.byteOffset, slice.byteOffset + slice.byteLength),
     });
-    if (r.ok) tunerUpdate(await r.json());
+    if (r.ok) (chord ? chordUpdate : tunerUpdate)(await r.json());
   } catch { /* transient — keep listening */ } finally {
     tuner.busy = false;
   }
@@ -1122,7 +1164,9 @@ async function tryNativeTuner() {
 
 async function tunerStart() {
   $("tuner-error").textContent = "";
-  if ($("tuner-system").value === "western" && await tryNativeTuner()) return;
+  // The native tuner streams pitch readings only — chord ID needs the raw
+  // audio, so it always rides the browser-mic pipeline.
+  if (!tunerChordMode() && $("tuner-system").value === "western" && await tryNativeTuner()) return;
   tuner.mode = "mic";
   try {
     // noise suppression keeps room hum out of the pitch tracker; echo
@@ -1144,10 +1188,12 @@ async function tunerStart() {
   tuner.node.connect(tuner.ctx.destination);
   tuner.running = true;
   tuner.timer = setInterval(tunerTick, 200);
-  $("tuner-toggle").textContent = "■ Stop tuner";
+  $("tuner-toggle").textContent = tunerChordMode() ? "■ Stop listening" : "■ Stop tuner";
   syncTunerDisplay();
-  $("tuner-mode").textContent = "browser mic"
-    + (tuner.nativeFailure ? ` (native tuner unavailable: ${tuner.nativeFailure})` : "");
+  $("tuner-mode").textContent = tunerChordMode()
+    ? "browser mic → pytheory.audio.identify_chord, ~1s window"
+    : "browser mic"
+      + (tuner.nativeFailure ? ` (native tuner unavailable: ${tuner.nativeFailure})` : "");
 }
 
 function tunerStop() {
@@ -1163,9 +1209,10 @@ function tunerStop() {
     tuner.stream?.getTracks().forEach((t) => t.stop());
     tuner.buffer = [];
   }
-  $("tuner-toggle").textContent = "🎤 Start tuner";
+  $("tuner-toggle").textContent = tunerChordMode() ? "🎤 Identify chords" : "🎤 Start tuner";
   $("tuner-mode").textContent = "";
-  tunerUpdate({ voiced: false });
+  if (tunerChordMode()) chordUpdate({ chord: null });
+  else tunerUpdate({ voiced: false });
 }
 
 /* ---------- chord lab ---------- */
@@ -1561,7 +1608,7 @@ const SHARE = {
     collect() {
       return { instrument: $("tuner-instrument").value, tuning: $("tuner-tuning").value,
                system: $("tuner-system").value, reference: $("tuner-reference").value,
-               display: $("tuner-display-mode").value };
+               display: $("tuner-display-mode").value, listen: $("tuner-listen").value };
     },
     apply(p) {
       if (p.get("instrument")) $("tuner-instrument").value = p.get("instrument");
@@ -1569,6 +1616,7 @@ const SHARE = {
       if (p.get("system")) $("tuner-system").value = p.get("system");
       if (p.get("reference")) $("tuner-reference").value = p.get("reference");
       if (p.get("display")) { $("tuner-display-mode").value = p.get("display"); syncTunerDisplay(); }
+      if (p.get("listen")) { $("tuner-listen").value = p.get("listen"); syncTunerDisplay(); }
       refreshTunerStrings();
     },
   },
@@ -1744,6 +1792,14 @@ async function boot() {
   $("tuner-toggle").addEventListener("click", () =>
     tuner.running ? tunerStop() : tunerStart());
   $("tuner-display-mode").addEventListener("change", syncTunerDisplay);
+  $("tuner-listen").addEventListener("change", () => {
+    const wasRunning = tuner.running;
+    if (wasRunning) tunerStop();  // the two modes ride different pipelines
+    if (tunerChordMode()) chordUpdate({ chord: null });
+    else tunerUpdate({ voiced: false });
+    syncTunerDisplay();
+    if (wasRunning) tunerStart();
+  });
   refreshTunerStrings();
 
   $("chord-play").addEventListener("click", (e) => {

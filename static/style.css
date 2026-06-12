@@ -320,6 +320,7 @@ input[type="range"] { accent-color: var(--accent); }
 .tuner-strobe { display: flex; justify-content: center; padding: 0.5rem 0; }
 #strobe-disc { max-width: 100%; }
 .tuner-verdict { margin-top: 0.6rem; font-style: italic; color: var(--muted); min-height: 1.4em; }
+.tuner-chord-notes { justify-content: center; min-height: 2rem; }
 
 /* about page */
 .prose { max-width: 48rem; font-size: 1.2rem; }
