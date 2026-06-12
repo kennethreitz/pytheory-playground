@@ -388,3 +388,10 @@ footer {
   from { opacity: 0.25; transform: translateY(3px); }
   to { opacity: 1; transform: none; }
 }
+
+/* chord card layout: diagram + anatomy side by side */
+.chord-flex { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: flex-start; }
+.chord-flex > div:first-child { flex: 0 0 auto; }
+#chord-info { flex: 1 1 14rem; min-width: 13rem; }
+#chord-info h4 { margin-top: 0.2rem; }
+#chord-info h4 small { color: var(--faint); font-family: var(--mono); font-size: 0.65rem; margin-left: 0.4rem; }

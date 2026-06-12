@@ -115,6 +115,26 @@ def score_for(items, *, bpm=110, duration=1.0, synth="sine", strum=False,
     return score
 
 
+def _chord_formula(chord) -> list:
+    """Each chord tone with its interval from the root (root, major 3rd, ...)."""
+    root = chord.root if getattr(chord, "root", None) is not None else chord.tones[0]
+    out, seen = [], set()
+    for t in chord.tones:
+        if t.midi % 12 in seen:
+            continue
+        seen.add(t.midi % 12)
+        if t.midi % 12 == root.midi % 12:
+            label = "root"
+        else:
+            try:
+                above = Tone.from_midi(root.midi + (t.midi - root.midi) % 12)
+                label = root.interval_to(above)
+            except Exception:
+                label = "—"
+        out.append({"note": t.name, "interval": label})
+    return out
+
+
 def _parse_chord(symbol: str) -> Chord:
     """Parse a chord symbol, falling back to the wider from_symbol grammar
     (sus4, add9, ... — anything scale.harmonize() can emit)."""
@@ -235,6 +255,7 @@ async def chord_view(req, resp):
         "strings": list(fingering.string_names),
         "tones": [t.name for t in named.acceptable_tones],
         "pitches": [str(t) for t in chord.tones],
+        "formula": _chord_formula(chord),
         "alternatives": _alt_fingerings(named, fretboard,
                                         skip=tuple(fingering.positions)),
     }
@@ -1011,6 +1032,7 @@ async def identify_chord(req, resp):
         "name": name,
         "symbol": symbol,
         "tones": [str(t) for t in chord.tones] if chord is not None else [],
+        "formula": _chord_formula(chord) if chord is not None else [],
         "tab": tab,
     }
 

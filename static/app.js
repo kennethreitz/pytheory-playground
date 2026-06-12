@@ -136,6 +136,12 @@ function chordDiagram(svg, positions, strings, opts = {}) {
 
 /* ---------- chords panel ---------- */
 
+function renderFormula(formula) {
+  $("chord-formula").innerHTML = formula.length
+    ? formula.map((f) => `<tr><td>${f.note}</td><td>${f.interval}</td></tr>`).join("")
+    : "<tr><td>—</td><td>no sounding notes</td></tr>";
+}
+
 // Current tuning + capo as a query-string fragment ("" when standard, no capo).
 function chordTuning() {
   const sel = $("chord-tuning").value;
@@ -220,6 +226,7 @@ async function identifyCurrentVoicing() {
       : `? <small class="custom-note">unrecognized voicing</small>`;
     $("chord-tab").textContent = d.tab;
     $("chord-tones").textContent = d.tones.length ? `tones: ${d.tones.join(" · ")}` : "";
+    renderFormula(d.formula || []);
     chordState.voicingTones = d.tones;
     if (selectChordFromSymbol(d.symbol)) {
       // keep the voicing alternatives and chord-tone map in sync with
@@ -237,6 +244,7 @@ async function refreshAlternatives(symbol) {
   try {
     const c = await api(`/api/chord?name=${encodeURIComponent(symbol)}&instrument=${$("chord-instrument").value}${chordTuning()}`);
     renderAlternatives(c.alternatives || []);
+    updateShareUrl();
   } catch { /* keep the previous row */ }
 }
 
@@ -249,6 +257,7 @@ async function refreshChord() {
     $("chord-title").textContent = c.name;
     $("chord-tab").textContent = c.tab;
     $("chord-tones").textContent = `tones: ${c.tones.join(" · ")}`;
+    renderFormula(c.formula);
     chordState.positions = [...c.positions];
     chordState.strings = c.strings;
     chordState.viewBase = autoBase(c.positions);
@@ -256,6 +265,7 @@ async function refreshChord() {
     chordState.voicingTones = [];
     renderChordDiagram();
     renderAlternatives(c.alternatives || []);
+    updateShareUrl();
     if ($("gscale-mode").value === "chord") refreshGuitarScale();
   } catch (e) {
     $("chord-error").textContent = e.message;
@@ -315,8 +325,7 @@ function renderScaleBoard(svg, data) {
       g.style.cursor = "pointer";
       const c = document.createElementNS(ns, "circle");
       c.setAttribute("cx", dx(pos.fret)); c.setAttribute("cy", y); c.setAttribute("r", 10);
-      c.setAttribute("class", pos.root ? "board-dot root"
-        : pos.degree ? `board-dot deg-${((pos.degree - 1) % 7) + 1}` : "board-dot");
+      c.setAttribute("class", pos.root ? "board-dot root" : "board-dot");
       const t = document.createElementNS(ns, "text");
       t.setAttribute("x", dx(pos.fret)); t.setAttribute("y", y + 3.5);
       t.setAttribute("text-anchor", "middle"); t.setAttribute("font-size", 9);
@@ -386,12 +395,6 @@ function pitchClass(name) {
 
 function renderPiano(container, noteNames) {
   container.innerHTML = "";
-  // pitch class -> degree color, in scale order
-  const degOf = new Map();
-  for (const n of noteNames) {
-    const pc = pitchClass(n);
-    if (!degOf.has(pc)) degOf.set(pc, (degOf.size % 7) + 1);
-  }
   const lit = new Set(noteNames.map(pitchClass));
   const whites = [0, 2, 4, 5, 7, 9, 11];
   const blacks = { 0: 1, 1: 3, 3: 6, 4: 8, 5: 10 }; // white index -> black pc
@@ -401,13 +404,11 @@ function renderPiano(container, noteNames) {
       const k = document.createElement("div");
       k.className = "white-key" + (lit.has(pc) ? " lit" : "");
       k.style.left = `${x}px`;
-      if (lit.has(pc)) k.style.background = `var(--deg${degOf.get(pc)})`;
       container.appendChild(k);
       if (wi in blacks) {
         const b = document.createElement("div");
         b.className = "black-key" + (lit.has(blacks[wi]) ? " lit" : "");
         b.style.left = `${x + 25}px`;
-        if (lit.has(blacks[wi])) b.style.background = `var(--deg${degOf.get(blacks[wi])})`;
         container.appendChild(b);
       }
       x += 37;
@@ -441,10 +442,9 @@ async function refreshScale() {
     $("scale-title").textContent = `${tonic} ${s.name}` + (system !== "western" ? ` (${system})` : "");
     const row = $("scale-notes");
     row.innerHTML = "";
-    const nDegrees = Math.max(1, s.tones.length - 1);
     s.tones.forEach((t, i) => {
       const pill = document.createElement("span");
-      pill.className = `note-pill deg-${(i % nDegrees) % 7 + 1}`;
+      pill.className = "note-pill" + (i === 0 ? " tonic" : "");
       pill.textContent = t;
       row.appendChild(pill);
     });
@@ -459,11 +459,10 @@ async function refreshScale() {
         .then((d) => ($("scale-fretboard").textContent = d.diagram))
         .catch((e) => ($("scale-fretboard").textContent = e.message));
     }
+    updateShareUrl();
     $("scale-harmonized-card").classList.toggle("hidden", s.harmonized.length === 0);
     pillRow($("scale-harmonized"), s.harmonized, (pill, sym) => {
       pill.textContent = sym;
-      const i = s.harmonized.indexOf(sym);
-      pill.classList.add(`deg-${(i % 7) + 1}`);
       pill.append(" ", playButton(`/api/symbols/audio?symbols=${encodeURIComponent(sym)}`));
     });
     lastHarmonized = s.harmonized;
@@ -544,6 +543,7 @@ async function refreshKey() {
       : "no accidentals";
     $("key-extra").textContent = `signature: ${sigText} · relative: ${k.relative}`;
 
+    updateShareUrl();
     const p = await api(`/api/progression?${progParams()}`);
     renderProgressionRow(p.chords);
     randomSymbols = null;
@@ -1156,6 +1156,7 @@ async function refreshLab() {
   try {
     const d = await api(`/api/chord/lab?name=${encodeURIComponent($("lab-symbol").value.trim())}`);
     $("lab-title").textContent = d.symbol;
+    updateShareUrl();
     $("lab-tones").textContent = `tones: ${d.tones.join(" · ")}`;
     $("lab-intervals").textContent = d.intervals.join(" – ") + " semitones";
     $("lab-pcs").textContent = `{${d.pitch_classes.join(", ")}}`;
@@ -1338,6 +1339,7 @@ function songSummary() {
 }
 
 function renderTimeline() {
+  if (activePanel() === "song") updateShareUrl();
   const tl = $("song-timeline");
   tl.innerHTML = "";
   sectionColor._map = new Map(); // stable colors per render, by first appearance
@@ -1430,6 +1432,132 @@ async function songPost(path, onlySelected = false) {
   return r;
 }
 
+/* ---------- shareable URLs ----------
+Each panel serializes its state into the hash (e.g. #chords?root=C&capo=2)
+as you work; opening such a link restores it. */
+
+const SHARE = {
+  chords: {
+    collect() {
+      const p = { root: $("chord-root").value, quality: $("chord-quality").value,
+                  instrument: $("chord-instrument").value };
+      const t = $("chord-tuning").value;
+      if (t === "custom…" && $("chord-tuning-custom").value.trim()) p.tuning = $("chord-tuning-custom").value.trim();
+      else if (t !== "standard") p.tuning = t;
+      const capo = parseInt($("chord-capo").value, 10) || 0;
+      if (capo) p.capo = capo;
+      if (chordState.custom) p.frets = chordState.positions.map((x) => (x === null ? "x" : x)).join(",");
+      return p;
+    },
+    apply(p) {
+      if (p.get("root")) $("chord-root").value = p.get("root");
+      if (p.get("quality") !== null) $("chord-quality").value = p.get("quality");
+      if (p.get("instrument")) $("chord-instrument").value = p.get("instrument");
+      syncTuningControls();
+      const t = p.get("tuning");
+      if (t) {
+        if (META.tunings.includes(t)) $("chord-tuning").value = t;
+        else {
+          $("chord-tuning").value = "custom…";
+          $("chord-tuning-custom").value = t;
+          $("chord-tuning-custom-wrap").classList.remove("hidden");
+        }
+      }
+      if (p.get("capo")) $("chord-capo").value = p.get("capo");
+      if (p.get("frets")) {
+        // restore a custom voicing after the chart loads
+        setTimeout(() => {
+          chordState.positions = p.get("frets").split(",").map((x) => (x === "x" ? null : parseInt(x, 10)));
+          chordState.custom = true;
+          chordState.viewBase = autoBase(chordState.positions);
+          renderChordDiagram();
+          identifyCurrentVoicing();
+        }, 600);
+      }
+    },
+  },
+  scales: {
+    collect() {
+      return { system: $("scale-system").value, tonic: $("scale-tonic").value,
+               octave: $("scale-octave").value, name: $("scale-name").value };
+    },
+    apply(p) {
+      if (p.get("system")) $("scale-system").value = p.get("system");
+      syncSystemControls();
+      if (p.get("tonic")) $("scale-tonic").value = p.get("tonic");
+      if (p.get("octave")) $("scale-octave").value = p.get("octave");
+      if (p.get("name")) $("scale-name").value = p.get("name");
+    },
+  },
+  keys: {
+    collect() {
+      return { tonic: $("key-tonic").value, mode: $("key-mode").value,
+               progression: $("key-progression").value };
+    },
+    apply(p) {
+      if (p.get("tonic")) $("key-tonic").value = p.get("tonic");
+      if (p.get("mode")) $("key-mode").value = p.get("mode");
+      if (p.get("progression")) $("key-progression").value = p.get("progression");
+    },
+  },
+  lab: {
+    collect() { return { chord: $("lab-symbol").value, to: $("vl-to").value }; },
+    apply(p) {
+      if (p.get("chord")) $("lab-symbol").value = p.get("chord");
+      if (p.get("to")) $("vl-to").value = p.get("to");
+    },
+  },
+  tuner: {
+    collect() {
+      return { instrument: $("tuner-instrument").value, tuning: $("tuner-tuning").value,
+               system: $("tuner-system").value, reference: $("tuner-reference").value,
+               display: $("tuner-display-mode").value };
+    },
+    apply(p) {
+      if (p.get("instrument")) $("tuner-instrument").value = p.get("instrument");
+      if (p.get("tuning")) $("tuner-tuning").value = p.get("tuning");
+      if (p.get("system")) $("tuner-system").value = p.get("system");
+      if (p.get("reference")) $("tuner-reference").value = p.get("reference");
+      if (p.get("display")) { $("tuner-display-mode").value = p.get("display"); syncTunerDisplay(); }
+      refreshTunerStrings();
+    },
+  },
+  song: {
+    collect() {
+      // whole arrangement in one base64url param
+      const b64 = btoa(JSON.stringify(songSpec()))
+        .replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+      return { s: b64, vibe: $("song-vibe").value };
+    },
+    apply(p) {
+      if (p.get("vibe")) $("song-vibe").value = p.get("vibe");
+      if (!p.get("s")) return;
+      try {
+        const json = atob(p.get("s").replaceAll("-", "+").replaceAll("_", "/"));
+        const spec = JSON.parse(json);
+        if (spec.tonic) $("song-tonic").value = spec.tonic;
+        loadSongSpec(spec);
+        SHARE._songRestored = true;
+      } catch { /* malformed link — fall through to a fresh sketch */ }
+    },
+  },
+};
+
+function activePanel() {
+  return document.querySelector(".panel.active")?.id.replace("panel-", "") || "about";
+}
+
+function updateShareUrl() {
+  const panel = activePanel();
+  const collect = SHARE[panel]?.collect;
+  let hash = `#${panel}`;
+  if (collect) {
+    const qs = new URLSearchParams(collect()).toString();
+    if (qs) hash += `?${qs}`;
+  }
+  history.replaceState(null, "", hash);
+}
+
 /* ---------- boot ---------- */
 
 async function boot() {
@@ -1464,7 +1592,7 @@ async function boot() {
     $("sound").appendChild(o);
   }
 
-  // tab switching (with #hash deep links)
+  // tab switching (with #hash deep links + shareable state params)
   const showPanel = (name) => {
     if (name === "groove") name = "song"; // Groove Lab merged into Songwriter
     if (!$(`panel-${name}`)) return;
@@ -1475,11 +1603,26 @@ async function boot() {
   };
   document.querySelectorAll("#tabs button").forEach((b) =>
     b.addEventListener("click", () => {
-      history.replaceState(null, "", `#${b.dataset.panel}`);
       showPanel(b.dataset.panel);
+      updateShareUrl();
     }));
-  if (location.hash) showPanel(location.hash.slice(1));
-  window.addEventListener("hashchange", () => showPanel(location.hash.slice(1)));
+  const PANEL_REFRESH = {
+    chords: () => { refreshChord(); refreshGuitarScale(); },
+    scales: refreshScale,
+    keys: refreshKey,
+    lab: refreshLab,
+  };
+  const applyHashState = (refresh) => {
+    let [panel, query] = location.hash.slice(1).split("?");
+    if (panel === "groove") panel = "song";
+    if (panel) showPanel(panel);
+    if (query && SHARE[panel]) {
+      SHARE[panel].apply(new URLSearchParams(query));
+      if (refresh) PANEL_REFRESH[panel]?.();
+    }
+  };
+  applyHashState(false); // initial refreshes below pick the state up
+  window.addEventListener("hashchange", () => applyHashState(true));
   document.querySelectorAll("a.goto").forEach((a) =>
     a.addEventListener("click", (e) => {
       e.preventDefault();
@@ -1693,7 +1836,7 @@ async function boot() {
       $("song-error").textContent = err.message;
     }
   });
-  sketchSong();
+  if (!SHARE._songRestored) sketchSong();
 
   refreshChord();
   refreshGuitarScale();

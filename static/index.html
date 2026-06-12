@@ -122,15 +122,24 @@
       <div class="results" id="chord-results">
         <div class="card">
           <h3 id="chord-title">—</h3>
-          <svg id="chord-diagram" viewBox="0 0 220 260" width="220" height="260"></svg>
-          <div class="fret-nav">
-            <button id="fret-down" title="Lower fret window">&lsaquo;</button>
-            <span id="fret-label">1fr</span>
-            <button id="fret-up" title="Higher fret window">&rsaquo;</button>
+          <div class="chord-flex">
+            <div>
+              <svg id="chord-diagram" viewBox="0 0 220 260" width="220" height="260"></svg>
+              <div class="fret-nav">
+                <button id="fret-down" title="Lower fret window">&lsaquo;</button>
+                <span id="fret-label">1fr</span>
+                <button id="fret-up" title="Higher fret window">&rsaquo;</button>
+              </div>
+            </div>
+            <div id="chord-info">
+              <h4>How it&rsquo;s built <small>root.interval_to(…)</small></h4>
+              <table class="kv" id="chord-formula"></table>
+              <p id="chord-tones" class="tones"></p>
+              <p class="hint">Click the diagram to build your own voicing — clicks above the nut
+                toggle open&nbsp;/&nbsp;muted strings, and a second click on a dot clears it.
+                Whatever you finger, pytheory names it and keeps everything else in sync.</p>
+            </div>
           </div>
-          <p id="chord-tones" class="tones"></p>
-          <p class="hint">Click the diagram to build your own voicing — above the nut toggles
-            open&nbsp;/&nbsp;muted. Matching chords get selected automatically.</p>
           <h4>More voicings <small>NamedChord.fingerings(…)</small></h4>
           <div id="chord-alts" class="prog-row"></div>
         </div>
