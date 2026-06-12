@@ -52,6 +52,11 @@ $ docker run -p 5042:5042 pytheory-playground
   nova, dhol chaal, drum and bass, blast beat…) with auto-fills, a swing
   control, optional chord backing in any key, server-rendered audio, and
   MIDI export.
+- **Songwriter** — one click sketches a complete arrangement in any key from a
+  vibe (pop, rock, jazz, blues, folk, lofi, latin): named sections built on
+  `Score.section()`, a groove and chord style per section (block / strummed /
+  arpeggiated), a root-fifth bass line, and a fade-out — fully editable, then
+  rendered as audio, MIDI, or engraved sheet music.
 - **Tools**
   - *Hum it → harmonize it* — record a melody; pytheory transcribes it,
     detects the key, picks a chord for every bar, and plays it back with
@@ -84,6 +89,8 @@ Everything the UI does is a plain JSON/WAV/PDF endpoint:
 | `GET /api/key/modulate?to_tonic=Eb` | Modulation path + pivot chords |
 | `GET /api/circle` | Circle of fifths with signatures + relatives |
 | `GET /api/groove/audio?preset=funk&swing=0.15` (+`/midi`) | Drum groove WAV / MIDI |
+| `GET /api/song/sketch?vibe=jazz` | Editable song spec for a vibe |
+| `POST /api/song/audio` / `midi` / `notation` (song spec JSON) | Full arrangement |
 | `GET /api/progression` (+`/audio`, `/midi`) | Chords with tabs / WAV / MIDI |
 | `GET /api/tools/identify?frets=x,3,2,0,1,0` | Chord name from fingering |
 | `GET /api/tools/analyze` / `GET /api/tools/detect-key` | Numerals / key |

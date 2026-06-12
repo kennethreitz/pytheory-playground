@@ -37,6 +37,7 @@
       <button data-panel="scales">Scales</button>
       <button data-panel="keys">Keys &amp; Progressions</button>
       <button data-panel="groove">Groove Lab</button>
+      <button data-panel="song">Songwriter</button>
       <button data-panel="tools">Tools</button>
       <label id="sound-wrap" title="Playback sound (pytheory synth presets)">&#9835;
         <select id="sound"></select>
@@ -69,6 +70,9 @@
           <li><a href="#keys" class="goto" data-panel="keys">Keys &amp; Progressions</a> — diatonic
             chords, borrowed chords, secondary dominants, named progressions, and a modulation
             planner.</li>
+          <li><a href="#song" class="goto" data-panel="song">Songwriter</a> — sketch a whole
+            arrangement from a vibe: sections, grooves, bass, and fade-out, rendered as audio,
+            MIDI, or engraved sheet music.</li>
           <li><a href="#tools" class="goto" data-panel="tools">Tools</a> — identify chords from
             fret positions, analyze progressions, detect keys, transcribe hummed or whistled
             recordings into notation, and convert MIDI to LilyPond (with PDF engraving), ABC,
@@ -430,6 +434,50 @@ tuner.onmessage = (e) => {
           chord backing cycled underneath. Rendered to audio server-side, exportable as MIDI.</p>
         <p class="hint" id="groove-status"></p>
       </div>
+    </section>
+
+    <!-- ============ Songwriter ============ -->
+    <section id="panel-song" class="panel">
+      <div class="controls">
+        <label>Vibe
+          <select id="song-vibe">
+            <option>pop</option><option>rock</option><option>jazz</option><option>blues</option>
+            <option>folk</option><option>lofi</option><option>latin</option>
+          </select>
+        </label>
+        <label>Key
+          <select id="song-tonic"></select>
+        </label>
+        <label>Mode
+          <select id="song-mode"><option selected>major</option><option>minor</option></select>
+        </label>
+        <button id="song-sketch" class="play">&#10024; Sketch it</button>
+      </div>
+      <div class="card wide">
+        <h3>Songwriter <small>Score.section(…) · part.arpeggio · part.fade_out · score.drums</small></h3>
+        <p class="hint">One click sketches a whole arrangement — sections, grooves, chords, and a
+          bass line — that you can rework below. pytheory renders the band.</p>
+        <div class="controls">
+          <label>BPM <input type="number" id="song-bpm" value="112" min="40" max="220" style="width:5rem"></label>
+          <label>Swing <span id="song-swing-label" class="mono-val">0</span>
+            <input type="range" id="song-swing" min="0" max="0.6" step="0.05" value="0">
+          </label>
+          <label>Chord sound
+            <select id="song-sound"></select>
+          </label>
+          <label class="check"><input type="checkbox" id="song-fade" checked> fade out</label>
+        </div>
+        <div id="song-sections"></div>
+        <button id="song-add" class="secondary" style="margin-top:0.5rem">+ section</button>
+        <div class="controls" style="margin-top:1.25rem">
+          <button id="song-play" class="play">&#9654; Play song</button>
+          <button id="song-midi" class="secondary">&#8681; MIDI</button>
+          <button id="song-pdf" class="play">&#9836; Sheet music PDF</button>
+          <span class="hint" id="song-status"></span>
+        </div>
+        <p class="error" id="song-error"></p>
+      </div>
+      <datalist id="progression-names"></datalist>
     </section>
 
     <!-- ============ Tools ============ -->

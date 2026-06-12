@@ -318,3 +318,9 @@ footer {
   header, main, footer { padding-left: 1rem; padding-right: 1rem; }
   h1 { font-size: 2rem; }
 }
+
+/* songwriter */
+.song-row { display: flex; gap: 0.5rem; align-items: center; margin: 0.4rem 0; flex-wrap: wrap; }
+.song-row input, .song-row select { font-size: 0.88rem; padding: 0.3rem 0.45rem; }
+.song-row .s-del { border-color: var(--line); color: var(--faint); }
+.song-row .s-del:hover { border-color: var(--accent); color: var(--accent); background: none; }

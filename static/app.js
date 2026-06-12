@@ -1248,6 +1248,80 @@ async function detectKey() {
   }
 }
 
+/* ---------- songwriter ---------- */
+
+function songSpec() {
+  const sections = [...document.querySelectorAll("#song-sections .song-row")].map((row) => ({
+    name: row.querySelector(".s-name").value || "section",
+    numerals: row.querySelector(".s-prog").value || "I-IV-V-I",
+    groove: row.querySelector(".s-groove").value,
+    style: row.querySelector(".s-style").value,
+  }));
+  return {
+    tonic: $("song-tonic").value,
+    mode: $("song-mode").value,
+    bpm: parseInt($("song-bpm").value, 10) || 110,
+    swing: parseFloat($("song-swing").value) || 0,
+    sound: $("song-sound").value,
+    fade_out: $("song-fade").checked,
+    sections,
+  };
+}
+
+function addSongRow(sec = {}) {
+  const row = document.createElement("div");
+  row.className = "song-row";
+  row.innerHTML = `
+    <input class="s-name" type="text" value="${sec.name || "section"}" size="9">
+    <input class="s-prog" type="text" value="${sec.numerals || "I-IV-V-I"}" size="14" list="progression-names">
+    <select class="s-groove"></select>
+    <select class="s-style">
+      <option value="block">block chords</option>
+      <option value="strum">strummed</option>
+      <option value="arpeggio">arpeggiated</option>
+    </select>
+    <button class="s-del mini-play" title="Remove section">&#10005;</button>`;
+  const groove = row.querySelector(".s-groove");
+  fill(groove, ["none", ...META.drum_presets], sec.groove || "none");
+  row.querySelector(".s-style").value = sec.style || "block";
+  row.querySelector(".s-del").addEventListener("click", () => row.remove());
+  $("song-sections").appendChild(row);
+}
+
+function loadSongSpec(spec) {
+  $("song-bpm").value = spec.bpm;
+  $("song-swing").value = spec.swing;
+  $("song-swing-label").textContent = spec.swing;
+  $("song-sound").value = spec.sound;
+  $("song-fade").checked = spec.fade_out !== false;
+  if (spec.mode) $("song-mode").value = spec.mode;
+  $("song-sections").innerHTML = "";
+  for (const sec of spec.sections) addSongRow(sec);
+}
+
+async function sketchSong() {
+  $("song-error").textContent = "";
+  try {
+    const q = `vibe=${$("song-vibe").value}&tonic=${encodeURIComponent($("song-tonic").value)}&mode=${$("song-mode").value}`;
+    loadSongSpec(await api(`/api/song/sketch?${q}`));
+  } catch (e) {
+    $("song-error").textContent = e.message;
+  }
+}
+
+async function songPost(path) {
+  const r = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(songSpec()),
+  });
+  if (!r.ok) {
+    const d = await r.json();
+    throw new Error(d.error || r.statusText);
+  }
+  return r;
+}
+
 /* ---------- boot ---------- */
 
 async function boot() {
@@ -1472,6 +1546,54 @@ async function boot() {
   $("harm-pdf").addEventListener("click", (e) => {
     if (harmData?.lilypond) engraveSource(harmData.lilypond, harmData.lilypond_sig, e.target, "harm-error");
   });
+
+  // songwriter
+  fill($("song-tonic"), META.roots, "C");
+  fill($("song-sound"), META.sounds, "electric_piano");
+  for (const name of Object.keys(META.progressions)) {
+    const o = document.createElement("option");
+    o.value = name;
+    $("progression-names").appendChild(o);
+  }
+  $("song-swing").addEventListener("input", () =>
+    ($("song-swing-label").textContent = $("song-swing").value));
+  $("song-sketch").addEventListener("click", sketchSong);
+  $("song-add").addEventListener("click", () => addSongRow());
+  $("song-play").addEventListener("click", async (e) => {
+    if (audioEl && !audioEl.paused && audioEl._button === e.target) {
+      audioEl.pause();
+      return;
+    }
+    $("song-error").textContent = "";
+    $("song-status").textContent = "rendering the band…";
+    try {
+      const blob = await (await songPost("/api/song/audio")).blob();
+      $("song-status").textContent = "";
+      playUrl(URL.createObjectURL(blob), e.target);
+    } catch (err) {
+      $("song-status").textContent = "";
+      $("song-error").textContent = err.message;
+    }
+  });
+  $("song-midi").addEventListener("click", async (e) => {
+    try {
+      downloadBlob(await (await songPost("/api/song/midi")).blob(), "song.mid");
+    } catch (err) {
+      $("song-error").textContent = err.message;
+    }
+  });
+  $("song-pdf").addEventListener("click", async (e) => {
+    try {
+      $("song-status").textContent = "engraving…";
+      const d = await (await songPost("/api/song/notation")).json();
+      await engraveSource(d.lilypond, d.lilypond_sig, e.target, "song-error");
+    } catch (err) {
+      $("song-error").textContent = err.message;
+    } finally {
+      $("song-status").textContent = "";
+    }
+  });
+  sketchSong();
 
   refreshChord();
   refreshGuitarScale();

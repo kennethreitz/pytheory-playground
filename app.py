@@ -801,6 +801,163 @@ async def circle_of_fifths(req, resp):
     resp.media = {"keys": out}
 
 
+# --- Songwriter ---------------------------------------------------------------
+
+# One-click song skeletons per vibe; the UI loads these into the editor.
+VIBES = {
+    "pop": {"bpm": 112, "swing": 0.0, "sound": "electric_piano", "sections": [
+        {"name": "intro", "numerals": "I-vi", "groove": "none", "style": "arpeggio"},
+        {"name": "verse", "numerals": "I-V-vi-IV", "groove": "rock", "style": "block"},
+        {"name": "chorus", "numerals": "IV-I-V-vi", "groove": "disco", "style": "strum"},
+        {"name": "verse 2", "numerals": "I-V-vi-IV", "groove": "rock", "style": "block"},
+        {"name": "chorus 2", "numerals": "IV-I-V-vi", "groove": "disco", "style": "strum"},
+    ]},
+    "rock": {"bpm": 126, "swing": 0.0, "sound": "electric_guitar", "sections": [
+        {"name": "intro", "numerals": "I-I", "groove": "none", "style": "strum"},
+        {"name": "verse", "numerals": "vi-IV-I-V", "groove": "rock", "style": "strum"},
+        {"name": "chorus", "numerals": "I-V-vi-IV", "groove": "double time", "style": "strum"},
+        {"name": "verse 2", "numerals": "vi-IV-I-V", "groove": "rock", "style": "strum"},
+        {"name": "chorus 2", "numerals": "I-V-vi-IV", "groove": "double time", "style": "strum"},
+    ]},
+    "jazz": {"bpm": 140, "swing": 0.55, "sound": "piano", "sections": [
+        {"name": "head", "numerals": "ii-V-I-I", "groove": "jazz", "style": "block"},
+        {"name": "solo", "numerals": "ii-V-I-I", "groove": "bebop", "style": "arpeggio"},
+        {"name": "head out", "numerals": "ii-V-I-I", "groove": "jazz", "style": "block"},
+    ]},
+    "blues": {"bpm": 84, "swing": 0.35, "sound": "organ", "sections": [
+        {"name": "chorus 1", "numerals": "12-bar blues", "groove": "12/8 blues", "style": "block"},
+        {"name": "chorus 2", "numerals": "12-bar blues", "groove": "12/8 blues", "style": "arpeggio"},
+    ]},
+    "folk": {"bpm": 96, "swing": 0.0, "sound": "acoustic_guitar", "sections": [
+        {"name": "intro", "numerals": "I-IV", "groove": "none", "style": "arpeggio"},
+        {"name": "verse", "numerals": "I-IV-I-V", "groove": "cajon folk", "style": "strum"},
+        {"name": "chorus", "numerals": "IV-I-IV-V", "groove": "cajon folk", "style": "strum"},
+        {"name": "verse 2", "numerals": "I-IV-I-V", "groove": "cajon folk", "style": "strum"},
+    ]},
+    "lofi": {"bpm": 78, "swing": 0.12, "sound": "electric_piano", "sections": [
+        {"name": "loop a", "numerals": "I-vi-ii-V", "groove": "hip hop", "style": "block"},
+        {"name": "loop b", "numerals": "I-vi-ii-V", "groove": "hip hop", "style": "arpeggio"},
+        {"name": "loop a again", "numerals": "I-vi-ii-V", "groove": "hip hop", "style": "block"},
+    ]},
+    "latin": {"bpm": 120, "swing": 0.0, "sound": "piano", "sections": [
+        {"name": "intro", "numerals": "i-bVII", "groove": "none", "style": "arpeggio"},
+        {"name": "verse", "numerals": "i-bVI-bIII-bVII", "groove": "bossa nova", "style": "block"},
+        {"name": "chorus", "numerals": "i-bVI-bIII-bVII", "groove": "salsa", "style": "strum"},
+        {"name": "verse 2", "numerals": "i-bVI-bIII-bVII", "groove": "bossa nova", "style": "block"},
+    ]},
+}
+
+
+@api.route("/api/song/sketch")
+async def song_sketch(req, resp):
+    vibe = req.params.get("vibe", "pop")
+    if vibe not in VIBES:
+        return error(resp, 400, f"Unknown vibe: {vibe}. Try: {', '.join(VIBES)}")
+    spec = {k: v for k, v in VIBES[vibe].items()}
+    spec["sections"] = [dict(s) for s in spec["sections"]]
+    spec["tonic"] = req.params.get("tonic", "C")
+    spec["mode"] = "minor" if vibe == "latin" else req.params.get("mode", "major")
+    spec["fade_out"] = True
+    resp.media = spec
+
+
+def _build_song(spec) -> Score:
+    tonic = spec.get("tonic", "C")
+    mode = spec.get("mode", "major")
+    bpm = max(40, min(220, int(spec.get("bpm", 110))))
+    swing = max(0.0, min(0.7, float(spec.get("swing", 0))))
+    sound = spec.get("sound") if spec.get("sound") in SOUND_PRESETS else "electric_piano"
+    key = Key(tonic, mode=mode)
+
+    score = Score(bpm=bpm, swing=swing)
+    chords = score.part("chords", instrument=sound, volume=0.42, reverb=0.2,
+                        fretboard=Fretboard.guitar())
+    bass = score.part("bass", instrument="upright_bass", volume=0.5)
+
+    sections = spec.get("sections", [])[:12]
+    if not sections:
+        raise ValueError("A song needs at least one section")
+    for i, sec in enumerate(sections):
+        numerals_param = str(sec.get("numerals", "I-IV-V-I"))
+        numerals = PROGRESSIONS.get(numerals_param, tuple(numerals_param.split("-")))
+        prog = key.progression(*numerals)
+        style = sec.get("style", "block")
+        groove = sec.get("groove", "none")
+
+        score.section(str(sec.get("name", f"section {i + 1}")))
+        if groove and groove != "none" and groove in Pattern._PRESETS:
+            score.drums(groove, repeats=len(prog))
+        for ch in prog:
+            if style == "arpeggio":
+                chords.arpeggio(ch, bars=1, pattern="up-down", octaves=2)
+            elif style == "strum":
+                try:
+                    chords.strum(ch.symbol, 4.0)
+                except Exception:
+                    chords.add(ch, 4.0)
+            else:
+                chords.add(ch, 4.0)
+            root = ch.root if getattr(ch, "root", None) is not None else ch.tones[0]
+            low = max(28, root.midi - 12)
+            if groove and groove != "none":
+                bass.add(Tone.from_midi(low), 2.0)
+                bass.add(Tone.from_midi(low + 7), 2.0)  # root-fifth movement
+            else:
+                bass.rest(4.0)
+
+    if spec.get("fade_out"):
+        for part in (chords, bass):
+            part.fade_out(2)
+    return score
+
+
+async def _read_song_spec(req):
+    import json
+
+    raw = await req.content
+    if not raw:
+        raise ValueError("POST a song spec as JSON")
+    return json.loads(raw)
+
+
+@api.route("/api/song/audio")
+async def song_audio(req, resp):
+    try:
+        score = _build_song(await _read_song_spec(req))
+    except Exception as e:
+        return error(resp, 400, f"Bad song: {e}")
+    send_wav(resp, render_score(score))
+
+
+@api.route("/api/song/midi")
+async def song_midi(req, resp):
+    try:
+        score = _build_song(await _read_song_spec(req))
+    except Exception as e:
+        return error(resp, 400, f"Bad song: {e}")
+    with tempfile.NamedTemporaryFile(suffix=".mid", delete=False) as f:
+        path = f.name
+    try:
+        score.save_midi(path)
+        with open(path, "rb") as f:
+            resp.content = f.read()
+    finally:
+        os.unlink(path)
+    resp.headers["Content-Type"] = "audio/midi"
+    resp.headers["Content-Disposition"] = "attachment; filename=song.mid"
+
+
+@api.route("/api/song/notation")
+async def song_notation(req, resp):
+    try:
+        spec = await _read_song_spec(req)
+        score = _build_song(spec)
+    except Exception as e:
+        return error(resp, 400, f"Bad song: {e}")
+    resp.media = _score_outputs(score, spec.get("title", "Song sketch"),
+                                spec.get("tonic", "C"), spec.get("mode", "major"))
+
+
 # --- Tools: identify / analyze / detect -------------------------------------
 
 @api.route("/api/tools/identify")
