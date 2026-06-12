@@ -482,9 +482,21 @@ async function rollProgression() {
   const tonic = encodeURIComponent($("key-tonic").value);
   const mode = $("key-mode").value;
   try {
-    const d = await api(`/api/progression/random?tonic=${tonic}&mode=${mode}`);
+    let d = null;
+    // re-roll dull results (all one chord, or same as what's showing)
+    for (let tries = 0; tries < 4; tries++) {
+      d = await api(`/api/progression/random?tonic=${tonic}&mode=${mode}`);
+      const distinct = new Set(d.symbols).size;
+      if (distinct >= 3 && d.symbols.join() !== (randomSymbols || []).join()) break;
+    }
     renderProgressionRow(d.chords);
     randomSymbols = d.symbols;
+    $("prog-rolled").textContent =
+      `rolled: ${d.chords.map((c) => c.numeral).join("–")} (${d.symbols.join(" ")})`;
+    const row = $("prog-chords");
+    row.classList.remove("flash");
+    void row.offsetWidth; // restart the animation
+    row.classList.add("flash");
   } catch (e) {
     $("key-error").textContent = e.message;
   }
@@ -518,6 +530,7 @@ async function refreshKey() {
     const p = await api(`/api/progression?${progParams()}`);
     renderProgressionRow(p.chords);
     randomSymbols = null;
+    $("prog-rolled").textContent = "";
 
     // beyond the key: borrowed chords + secondary dominants + suggestions
     const symbolize = (s) => s.replace(" major", "").replace(" minor", "m")
