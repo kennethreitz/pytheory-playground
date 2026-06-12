@@ -872,7 +872,7 @@ async function harmonizeBody(body, filename) {
     pillRow($("harm-chords"), d.chords.map((sym, i) => ({ sym, i })), (pill, c) => {
       pill.innerHTML = `<small>bar ${c.i + 1}</small> ${c.sym}`;
     });
-    $("harm-audio").src = `data:audio/wav;base64,${d.audio_b64}`;
+    $("harm-audio").src = `data:${d.audio_mime || "audio/wav"};base64,${d.audio_b64}`;
   } catch (e) {
     $("harm-error").textContent = e.message;
   } finally {
@@ -1431,6 +1431,13 @@ function songSpec(onlySelected = false) {
     fade_out: onlySelected ? false : $("song-fade").checked,
     fill: $("song-fill").value === "none" ? null : $("song-fill").value,
     fill_every: $("song-fill-every").value || null,
+    mix: {
+      chords: parseFloat($("mix-chords").value),
+      bass: parseFloat($("mix-bass").value),
+      drums: parseFloat($("mix-drums").value),
+      reverb: parseFloat($("mix-reverb").value),
+      humanize: parseFloat($("mix-humanize").value),
+    },
     sections,
   };
 }
@@ -1442,6 +1449,12 @@ function loadSongSpec(spec) {
   $("song-sound").value = spec.sound;
   $("song-fade").checked = spec.fade_out !== false;
   if (spec.mode) $("song-mode").value = spec.mode;
+  const mix = spec.mix || {};
+  $("mix-chords").value = mix.chords ?? 0.42;
+  $("mix-bass").value = mix.bass ?? 0.5;
+  $("mix-drums").value = mix.drums ?? 0.5;
+  $("mix-reverb").value = mix.reverb ?? 0.2;
+  $("mix-humanize").value = mix.humanize ?? 0.15;
   songSections = spec.sections.map((s) => ({ ...s }));
   selectSection(songSections.length ? 0 : -1);
 }

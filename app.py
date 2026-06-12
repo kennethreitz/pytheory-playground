@@ -1,5 +1,6 @@
 """PyTheory Playground — interactive showcase backed by real pytheory code."""
 
+import asyncio
 import hashlib
 import hmac
 import io
@@ -149,9 +150,62 @@ def _sound(req):
     return s if s in SOUNDS else None
 
 
-def send_wav(resp, audio: np.ndarray):
-    resp.content = wav_bytes(audio)
-    resp.headers["Content-Type"] = "audio/wav"
+# Heavy work (synth renders, transcription, encoding) runs off the event
+# loop so the UI stays responsive, bounded to two concurrent jobs.
+_HEAVY = asyncio.Semaphore(2)
+
+
+async def run_heavy(fn, *args, **kwargs):
+    async with _HEAVY:
+        return await asyncio.to_thread(fn, *args, **kwargs)
+
+
+def _aac_encoder():
+    import shutil
+    if shutil.which("afconvert"):
+        return "afconvert"
+    if shutil.which("ffmpeg"):
+        return "ffmpeg"
+    return None
+
+
+AAC_ENCODER = _aac_encoder()
+
+
+def encode_audio(wav: bytes) -> tuple:
+    """Compress rendered WAV to AAC when an encoder exists (~8x smaller)."""
+    import subprocess
+
+    if AAC_ENCODER is None:
+        return wav, "audio/wav"
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        f.write(wav)
+        src_path = f.name
+    out_path = src_path + ".m4a"
+    if AAC_ENCODER == "afconvert":
+        cmd = ["afconvert", "-f", "m4af", "-d", "aac", "-b", "128000", src_path, out_path]
+    else:
+        cmd = ["ffmpeg", "-y", "-i", src_path, "-c:a", "aac", "-b:a", "128k", out_path]
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=120)
+        if result.returncode == 0 and os.path.exists(out_path):
+            with open(out_path, "rb") as f:
+                return f.read(), "audio/mp4"
+        return wav, "audio/wav"
+    except Exception:
+        return wav, "audio/wav"
+    finally:
+        for p in (src_path, out_path):
+            if os.path.exists(p):
+                os.unlink(p)
+
+
+async def send_audio(resp, score: Score):
+    """Render a Score and respond with compressed audio."""
+    audio = await run_heavy(render_score, score)
+    data, mime = await run_heavy(encode_audio, wav_bytes(audio))
+    resp.content = data
+    resp.headers["Content-Type"] = mime
     resp.headers["Cache-Control"] = "max-age=3600"
 
 
@@ -332,7 +386,7 @@ async def chord_audio(req, resp):
     # temperaments play the block chord so the tuning math is audible.
     score = score_for([chord], bpm=60, duration=2.0, sound=_sound(req),
                       strum=temperament == "equal", temperament=temperament)
-    send_wav(resp, render_score(score))
+    await send_audio(resp, score)
 
 
 @api.route("/api/voicing/audio")
@@ -349,7 +403,7 @@ async def voicing_audio(req, resp):
     except Exception as e:
         return error(resp, 422, f"Couldn't parse tones: {e}")
     score = score_for([chord], bpm=60, duration=2.0, sound=_sound(req))
-    send_wav(resp, render_score(score))
+    await send_audio(resp, score)
 
 
 @api.route("/api/chord/lab")
@@ -446,7 +500,7 @@ async def symbols_audio(req, resp):
     except Exception as e:
         return error(resp, 422, f"Couldn't parse chords: {e}")
     score = score_for(chords, bpm=80, duration=2.0, strum=True, sound=_sound(req))
-    send_wav(resp, render_score(score))
+    await send_audio(resp, score)
 
 
 # --- Scales ---------------------------------------------------------------
@@ -575,7 +629,7 @@ async def scale_audio(req, resp):
     except Exception as e:
         return error(resp, 400, f"Bad scale request: {e}")
     score = score_for(list(scale.tones), bpm=140, duration=0.5, sound=_sound(req), system=system)
-    send_wav(resp, render_score(score))
+    await send_audio(resp, score)
 
 
 # --- Keys & progressions ---------------------------------------------------
@@ -729,7 +783,7 @@ async def progression_audio(req, resp):
     except Exception as e:
         return error(resp, 400, f"Bad progression: {e}")
     score = score_for(chords, bpm=80, duration=2.0, strum=True, sound=_sound(req))
-    send_wav(resp, render_score(score))
+    await send_audio(resp, score)
 
 
 @api.route("/api/progression/midi")
@@ -785,7 +839,7 @@ async def groove_audio(req, resp):
         score = _groove_score(req)
     except Exception as e:
         return error(resp, 400, f"Bad groove: {e}")
-    send_wav(resp, render_score(score))
+    await send_audio(resp, score)
 
 
 @api.route("/api/groove/midi")
@@ -894,10 +948,22 @@ def _build_song(spec) -> Score:
     sound = spec.get("sound") if spec.get("sound") in SOUND_PRESETS else "electric_piano"
     key = Key(tonic, mode=mode)
 
-    score = Score(bpm=bpm, swing=swing)
-    chords = score.part("chords", instrument=sound, volume=0.42, reverb=0.2,
+    mix = spec.get("mix") or {}
+
+    def level(name, default):
+        try:
+            return max(0.0, min(1.0, float(mix.get(name, default))))
+        except (TypeError, ValueError):
+            return default
+
+    score = Score(bpm=bpm, swing=swing,
+                  drum_humanize=level("humanize", 0.15))
+    chords = score.part("chords", instrument=sound,
+                        volume=level("chords", 0.42),
+                        reverb=level("reverb", 0.2),
                         fretboard=Fretboard.guitar())
-    bass = score.part("bass", instrument="upright_bass", volume=0.5)
+    bass = score.part("bass", instrument="upright_bass",
+                      volume=level("bass", 0.5))
 
     sections = spec.get("sections", [])[:12]
     if not sections:
@@ -937,6 +1003,9 @@ def _build_song(spec) -> Score:
             else:
                 bass.rest(4.0)
 
+    drums = score.parts.get("drums")
+    if drums is not None:
+        drums.volume = level("drums", 0.5)
     if spec.get("fade_out"):
         for part in (chords, bass):
             part.fade_out(2)
@@ -958,7 +1027,7 @@ async def song_audio(req, resp):
         score = _build_song(await _read_song_spec(req))
     except Exception as e:
         return error(resp, 400, f"Bad song: {e}")
-    send_wav(resp, render_score(score))
+    await send_audio(resp, score)
 
 
 @api.route("/api/song/midi")
@@ -1243,11 +1312,11 @@ async def audio_convert(req, resp):
         # bass/melody split needs the low end; melody-only can ignore
         # everything below a hummable 70 Hz
         if kwargs.get("split"):
-            clean_path = _cleaned_wav_path(path, cutoff=40.0)
+            clean_path = await run_heavy(_cleaned_wav_path, path, cutoff=40.0)
         else:
-            clean_path = _cleaned_wav_path(path, cutoff=70.0)
+            clean_path = await run_heavy(_cleaned_wav_path, path, cutoff=70.0)
             kwargs.setdefault("fmin", 70.0)
-        score = Score.from_wav(clean_path, **kwargs)
+        score = await run_heavy(lambda: Score.from_wav(clean_path, **kwargs))
     except Exception as e:
         return error(resp, 422, f"Couldn't transcribe audio: {e}")
     finally:
@@ -1431,9 +1500,9 @@ async def harmonize(req, resp):
         path = f.name
     clean_path = None
     try:
-        clean_path = _cleaned_wav_path(path, cutoff=70.0)
+        clean_path = await run_heavy(_cleaned_wav_path, path, cutoff=70.0)
         kwargs.setdefault("fmin", 70.0)
-        score = Score.from_wav(clean_path, **kwargs)
+        score = await run_heavy(lambda: Score.from_wav(clean_path, **kwargs))
         from pytheory.audio import load_wav
         # the cleaned take is also what we mix under the accompaniment
         original, original_rate = load_wav(clean_path)
@@ -1494,7 +1563,7 @@ async def harmonize(req, resp):
     # melody is muted for audio (it stays in the MIDI and notation).
     if melody is not None:
         melody.volume = 0.0
-    accompaniment = render_score(score)
+    accompaniment = await run_heavy(render_score, score)
     if original_rate != SAMPLE_RATE:
         x_new = np.arange(int(len(original) * SAMPLE_RATE / original_rate))
         original = np.interp(x_new * original_rate / SAMPLE_RATE,
@@ -1515,8 +1584,10 @@ async def harmonize(req, resp):
         "bars": n_bars,
         "chords": [c.symbol for c in chosen],
         "melody_notes": len(pitched),
-        "audio_b64": base64.b64encode(wav_bytes(mix)).decode(),
     })
+    audio_data, audio_mime = await run_heavy(encode_audio, wav_bytes(mix))
+    out["audio_b64"] = base64.b64encode(audio_data).decode()
+    out["audio_mime"] = audio_mime
     with tempfile.NamedTemporaryFile(suffix=".mid", delete=False) as f:
         midi_path = f.name
     try:
@@ -1550,7 +1621,8 @@ async def lilypond_pdf(req, resp):
         with open(src, "wb") as f:
             f.write(body)
         try:
-            proc = subprocess.run(
+            proc = await run_heavy(
+                subprocess.run,
                 ["lilypond", "--pdf", "-dno-point-and-click", "-o", os.path.join(tmp, "score"), src],
                 capture_output=True, text=True, timeout=60,
             )

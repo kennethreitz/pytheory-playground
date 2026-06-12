@@ -452,6 +452,16 @@ tuner.onmessage = (e) => {
           </label>
           <label class="check"><input type="checkbox" id="song-fade" checked> fade out</label>
         </div>
+        <details id="song-mixer">
+          <summary class="hint">mixer — part levels, reverb, drum feel <small class="custom-note">Part(volume=…, reverb=…) · Score(drum_humanize=…)</small></summary>
+          <div class="controls" style="margin-top:0.6rem">
+            <label>Chords <input type="range" class="mix" id="mix-chords" min="0" max="1" step="0.05" value="0.42"></label>
+            <label>Bass <input type="range" class="mix" id="mix-bass" min="0" max="1" step="0.05" value="0.5"></label>
+            <label>Drums <input type="range" class="mix" id="mix-drums" min="0" max="1" step="0.05" value="0.5"></label>
+            <label>Reverb <input type="range" class="mix" id="mix-reverb" min="0" max="0.6" step="0.05" value="0.2"></label>
+            <label>Humanize <input type="range" class="mix" id="mix-humanize" min="0" max="0.5" step="0.05" value="0.15"></label>
+          </div>
+        </details>
         <p id="song-summary" class="tones"></p>
         <div id="song-timeline"></div>
         <div id="song-editor" class="hidden">
