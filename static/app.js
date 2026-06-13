@@ -964,14 +964,17 @@ let strobeRaf = null;
 let strobeLast = 0;
 
 function strobeFrame(now) {
-  if (!tuner.running || tunerChordMode() || $("tuner-display-mode").value !== "strobe") {
+  // Paint whenever strobe is the active display — even when the tuner is idle,
+  // so the disc is visible the moment you pick "strobe" instead of a blank box.
+  // The animation loop only keeps spinning while the tuner is actually running.
+  if (tunerChordMode() || $("tuner-display-mode").value !== "strobe") {
     strobeRaf = null;
     return;
   }
   const ctx = $("strobe-disc").getContext("2d");
   const dt = strobeLast ? Math.min((now - strobeLast) / 1000, 0.1) : 0;
   strobeLast = now;
-  const cents = tuner.lastCents;
+  const cents = tuner.running ? tuner.lastCents : null;
   if (cents !== null) strobeAngle += cents * dt * 0.06 * 2 * Math.PI;
 
   ctx.clearRect(0, 0, 340, 340);
@@ -989,7 +992,8 @@ function strobeFrame(now) {
       ctx.fill();
     }
   }
-  strobeRaf = requestAnimationFrame(strobeFrame);
+  // keep animating while live; otherwise leave the idle disc painted and stop
+  strobeRaf = tuner.running ? requestAnimationFrame(strobeFrame) : null;
 }
 
 function syncTunerDisplay() {
@@ -1007,7 +1011,7 @@ function syncTunerDisplay() {
     : "pytheory.tuner.Tuner · analyze_frame(…)";
   if (!tuner.running)
     $("tuner-toggle").textContent = chord ? "🎤 Identify chords" : "🎤 Start tuner";
-  if (strobe && tuner.running && !strobeRaf) {
+  if (strobe && !strobeRaf) {
     strobeLast = 0;
     strobeRaf = requestAnimationFrame(strobeFrame);
   }
