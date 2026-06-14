@@ -48,9 +48,16 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* "Fork me on GitHub" octocat corner — same ribbon as pytheory.org */
-img.github { position: absolute; top: 0; right: 0; border: 0; z-index: 100; }
-@media (max-width: 640px) { .github { display: none; } }
+/* GitHub octocat corner — matches kennethreitz.org's dark mode: the same
+   #151513/white ribbon, inverted and faded so it reads as a muted grey
+   triangle with a dark octocat silhouette on the dark page. */
+a.github {
+  position: absolute; top: 0; right: 0; z-index: 100; line-height: 0;
+  opacity: 0.25; transition: opacity 0.3s ease;
+}
+a.github:hover { opacity: 0.5; }
+img.github { display: block; width: 80px; height: 80px; border: 0; filter: invert(1); }
+@media (max-width: 640px) { a.github { display: none; } }
 
 ::selection { background: var(--accent); color: var(--bg); }
 
