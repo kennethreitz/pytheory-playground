@@ -222,7 +222,7 @@ async def index(req, resp):
     base = f"{req.url.scheme}://{req.url.netloc}"
     html = html.replace("__BASE__", base)
     # Cache-bust the app assets so browsers pick up new JS/CSS on deploy.
-    for asset in ("style.css", "app.js"):
+    for asset in ("style.css", "app.js", "github-banner.svg"):
         version = int(os.path.getmtime(os.path.join("static", asset)))
         html = html.replace(f"/static/{asset}", f"/static/{asset}?v={version}")
     resp.html = html
