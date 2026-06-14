@@ -915,6 +915,7 @@ const tuner = {
   timer: null,
   strings: [],
   busy: false,
+  lastCents: null,
   lastChord: null,
 };
 
@@ -974,7 +975,10 @@ function strobeFrame(now) {
   const ctx = $("strobe-disc").getContext("2d");
   const dt = strobeLast ? Math.min((now - strobeLast) / 1000, 0.1) : 0;
   strobeLast = now;
-  const cents = tuner.running ? tuner.lastCents : null;
+  // Treat anything non-finite (undefined before the first reading, a null gap,
+  // a stray NaN) as "no reading" — otherwise `strobeAngle += undefined * dt`
+  // poisons the accumulator to NaN and every arc silently draws off-canvas.
+  const cents = tuner.running && Number.isFinite(tuner.lastCents) ? tuner.lastCents : null;
   if (cents !== null) strobeAngle += cents * dt * 0.06 * 2 * Math.PI;
 
   ctx.clearRect(0, 0, 340, 340);
