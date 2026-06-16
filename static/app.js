@@ -891,37 +891,6 @@ function setupRecorder(buttonId, statusId, onBlob) {
   btn.addEventListener("click", () => (r.active ? stop() : start()));
 }
 
-/* ---------- hum it → harmonize it ---------- */
-
-let harmData = null;
-
-async function harmonizeBody(body, filename) {
-  $("harm-error").textContent = "";
-  $("harm-go").disabled = true;
-  try {
-    const r = await fetch(`/api/tools/harmonize?filename=${encodeURIComponent(filename)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/octet-stream" },
-      body,
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error || r.statusText);
-    harmData = d;
-    $("harm-result").classList.remove("hidden");
-    $("harm-summary").textContent =
-      `${d.key} · ${Math.round(d.bpm)} bpm · ${d.bars} bar${d.bars === 1 ? "" : "s"} · ${d.melody_notes} notes heard`;
-    pillRow($("harm-chords"), d.chords.map((sym, i) => ({ sym, i })), (pill, c) => {
-      pill.innerHTML = `<small>bar ${c.i + 1}</small> ${c.sym}`;
-    });
-    $("harm-audio").src = `data:${d.audio_mime || "audio/wav"};base64,${d.audio_b64}`;
-  } catch (e) {
-    $("harm-error").textContent = e.message;
-  } finally {
-    $("harm-go").disabled = false;
-    $("harm-rec-status").textContent = "or choose a file:";
-  }
-}
-
 async function engraveSource(source, sig, btn, errId) {
   btn.disabled = true;
   $(errId).textContent = "";
@@ -2064,24 +2033,6 @@ async function boot() {
   $("audio-file").addEventListener("change", () => {
     audioRecording = null; // a chosen file takes over from any recording
     $("audio-rec-status").textContent = "or choose a file:";
-  });
-  setupRecorder("harm-record", "harm-rec-status", (blob) =>
-    blob.arrayBuffer().then((b) => harmonizeBody(b, "recording.wav")));
-  $("harm-go").addEventListener("click", async () => {
-    try {
-      const { file, body } = await fileBody("harm-file", "Record something or choose an audio file first.");
-      harmonizeBody(body, file.name);
-    } catch (e) {
-      $("harm-error").textContent = e.message;
-    }
-  });
-  $("harm-midi").addEventListener("click", () => {
-    if (!harmData?.midi_b64) return;
-    const bytes = Uint8Array.from(atob(harmData.midi_b64), (c) => c.charCodeAt(0));
-    downloadBlob(new Blob([bytes], { type: "audio/midi" }), "harmonized.mid");
-  });
-  $("harm-pdf").addEventListener("click", (e) => {
-    if (harmData?.lilypond) engraveSource(harmData.lilypond, harmData.lilypond_sig, e.target, "harm-error");
   });
 
   // songwriter

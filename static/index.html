@@ -45,7 +45,6 @@
       <button data-panel="ragas">Ragas</button>
       <span class="nav-sep"></span>
       <button data-panel="song">Songwriter</button>
-      <button data-panel="harmonize">Harmonize</button>
       <span class="nav-sep"></span>
       <button data-panel="tools">Tools</button>
       <label id="sound-wrap" title="Playback sound (pytheory synth presets)">&#9835;
@@ -82,9 +81,6 @@
           <li><a href="#song" class="goto" data-panel="song">Songwriter</a> — sketch a whole
             arrangement from a vibe: sections, one hundred drum grooves with fills, chord styles,
             bass, and fade-out, rendered as audio, MIDI, or engraved sheet music.</li>
-          <li><a href="#harmonize" class="goto" data-panel="harmonize">Harmonize</a> — hum or
-            whistle a melody and get it back with chords and bass underneath, plus printable
-            sheet music.</li>
           <li><a href="#tools" class="goto" data-panel="tools">Tools</a> — identify chords from
             fret positions, analyze progressions, detect keys, transcribe hummed or whistled
             recordings into notation, and convert MIDI to LilyPond (with PDF engraving), ABC,
@@ -538,32 +534,6 @@ tuner.onmessage = (e) => {
         <p class="error" id="song-error"></p>
       </div>
       <datalist id="progression-names"></datalist>
-    </section>
-
-    <!-- ============ Harmonize ============ -->
-    <section id="panel-harmonize" class="panel">
-      <div class="card wide" id="harmonize-card">
-        <h3>Hum it &rarr; harmonize it <small>Score.from_wav · Key.detect · scale.harmonize()</small></h3>
-        <p class="hint">Hum or whistle a melody. pytheory transcribes it, detects the key, picks a
-          chord for every bar, and plays your tune back with piano and bass — printable as sheet music.</p>
-        <div class="controls">
-          <button id="harm-record" class="play">&#9679; Record</button>
-          <span class="hint" id="harm-rec-status">or choose a file:</span>
-          <input type="file" id="harm-file" accept=".wav,.m4a,.mp3,audio/*">
-          <button id="harm-go" class="secondary">Harmonize file</button>
-        </div>
-        <div id="harm-result" class="hidden">
-          <p id="harm-summary" class="tones"></p>
-          <div id="harm-chords" class="note-row"></div>
-          <audio id="harm-audio" controls style="width:100%; margin-top:0.85rem"></audio>
-          <div style="margin-top:0.6rem">
-            <button id="harm-midi" class="secondary">&#8681; MIDI</button>
-            <button id="harm-pdf" class="play">&#9836; Sheet music PDF</button>
-          </div>
-        </div>
-        <p class="error" id="harm-error"></p>
-      </div>
-
     </section>
 
     <!-- ============ Tools ============ -->
