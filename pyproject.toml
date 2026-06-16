@@ -5,6 +5,6 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "pytheory>=0.46.0",
+    "pytheory>=0.53.1",
     "responder>=3.12.0",
 ]

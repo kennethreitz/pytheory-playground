@@ -37,10 +37,12 @@
       <span class="nav-sep"></span>
       <button data-panel="chords">Guitar Tab</button>
       <button data-panel="tuner">Tuner</button>
+      <button data-panel="metronome">Metronome</button>
       <span class="nav-sep"></span>
       <button data-panel="lab">Chord Lab</button>
       <button data-panel="scales">Scales</button>
       <button data-panel="keys">Keys &amp; Progressions</button>
+      <button data-panel="ragas">Ragas</button>
       <span class="nav-sep"></span>
       <button data-panel="song">Songwriter</button>
       <button data-panel="harmonize">Harmonize</button>
@@ -285,6 +287,16 @@ tuner.onmessage = (e) => {
           <p id="lab-ext" class="tones"></p>
         </div>
         <div class="card">
+          <h3>Negative harmony <small>chord.negative_harmony(key)</small>
+            <label class="inline">in key
+              <select id="neg-key"></select>
+            </label>
+          </h3>
+          <p class="hint">Mirror the chord across the key's tonic–dominant axis (Ernst Levy / Jacob Collier).</p>
+          <div class="voicing-row" id="neg-row"></div>
+          <p id="neg-meta" class="tones"></p>
+        </div>
+        <div class="card">
           <h3>Tuning &amp; beats <small>chord.beat_frequencies · Score(temperament=…)</small></h3>
           <p class="hint">The same chord in four temperaments — equal splits the octave evenly,
             just locks to pure ratios; listen for the beating.</p>
@@ -390,6 +402,16 @@ tuner.onmessage = (e) => {
           </table>
           </div>
           <p id="key-extra" class="tones"></p>
+        </div>
+        <div class="card wide">
+          <h3>Chords by function <small>key.chords_by_function()</small></h3>
+          <p class="hint">Chords in the same family do the same harmonic job — swap one for another.</p>
+          <div id="key-families" class="fn-grid"></div>
+        </div>
+        <div class="card wide">
+          <h3>Circle neighbours <small>key.circle_of_fifths()</small></h3>
+          <p class="hint">A fifth either way shares all but one note — the smoothest places to modulate.</p>
+          <div id="key-circle" class="neighbours"></div>
         </div>
         <div class="card wide">
           <h3>Progression <small>key.progression(…)</small> <span id="prog-rolled" class="custom-note"></span></h3>
@@ -682,6 +704,89 @@ tuner.onmessage = (e) => {
         </div>
         <p class="error" id="midi-error"></p>
         <p class="hint">No MIDI handy? Grab one from the Keys &amp; Progressions tab with the MIDI button.</p>
+      </div>
+    </section>
+
+    <!-- ============ Ragas ============ -->
+    <section id="panel-ragas" class="panel">
+      <div class="controls">
+        <label>Raga
+          <select id="raga-name"></select>
+        </label>
+        <label>Sa (tonic)
+          <select id="raga-sa"></select>
+        </label>
+        <button id="raga-play" class="play">&#9654; Play (shruti)</button>
+      </div>
+      <div class="results">
+        <div class="card wide">
+          <h3 id="raga-title">—</h3>
+          <p id="raga-meta" class="tones"></p>
+          <table class="kv">
+            <tr><td>aroha <small>ascending</small></td><td id="raga-aroha" class="swara-line"></td></tr>
+            <tr><td>avaroha <small>descending</small></td><td id="raga-avaroha" class="swara-line"></td></tr>
+            <tr><td>pakad <small>catch-phrase</small></td><td id="raga-pakad" class="swara-line"></td></tr>
+            <tr><td>vadi · samvadi</td><td id="raga-vadi"></td></tr>
+          </table>
+          <div id="raga-notes" class="note-row"></div>
+        </div>
+        <div class="card wide">
+          <h3>Shruti intonation <small>raga.shruti_table(sa) — just vs 12-TET</small></h3>
+          <p class="hint">Each swara's just ratio and how far it sits from the equal-tempered piano (in cents).</p>
+          <table id="raga-shruti" class="shruti"></table>
+        </div>
+      </div>
+      <p class="error" id="raga-error"></p>
+    </section>
+
+    <!-- ============ Metronome ============ -->
+    <section id="panel-metronome" class="panel">
+      <div class="controls">
+        <label>BPM
+          <input type="number" id="metro-bpm" value="120" min="20" max="300" size="4">
+        </label>
+        <label>Beats
+          <select id="metro-beats">
+            <option>2</option><option>3</option><option selected>4</option>
+            <option>5</option><option>6</option><option>7</option>
+          </select>
+        </label>
+        <label>Subdivide
+          <select id="metro-sub">
+            <option value="1" selected>quarter</option>
+            <option value="2">eighths</option>
+            <option value="3">triplets</option>
+            <option value="4">sixteenths</option>
+          </select>
+        </label>
+        <button id="metro-toggle" class="play">&#9654; Start</button>
+      </div>
+      <div class="results">
+        <div class="card wide">
+          <div id="metro-lights" class="metro-lights"></div>
+          <p class="hint" style="text-align:center">Accented downbeat. Runs in your browser with the Web Audio clock.</p>
+        </div>
+        <details class="card wide">
+          <summary><h3>Tempo trainer <small>pytheory.metronome.Metronome(end_bpm=…)</small></h3></summary>
+          <p class="hint">Ramp the tempo while you practise — start slow, speed up automatically.</p>
+          <div class="controls">
+            <label><input type="checkbox" id="metro-train"> Enable</label>
+            <label>To BPM
+              <input type="number" id="metro-to" value="160" min="20" max="300" size="4">
+            </label>
+            <label>+BPM
+              <input type="number" id="metro-step" value="4" min="1" max="40" size="3">
+            </label>
+            <label>every
+              <select id="metro-every">
+                <option value="2">2 bars</option>
+                <option value="4" selected>4 bars</option>
+                <option value="8">8 bars</option>
+              </select>
+            </label>
+          </div>
+          <p id="metro-status" class="tones"></p>
+        </details>
       </div>
     </section>
   </main>

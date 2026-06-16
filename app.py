@@ -17,6 +17,7 @@ from pytheory import (
     Fretboard,
     Key,
     PROGRESSIONS,
+    Raga,
     SYSTEMS,
     Score,
     Tone,
@@ -27,6 +28,7 @@ from pytheory import (
 from pytheory import INSTRUMENTS as SOUND_PRESETS
 from pytheory import Pattern
 from pytheory._statics import TEMPERAMENTS
+from pytheory.play import SAMPLE_PEAK
 
 SAMPLE_RATE = 44100
 
@@ -204,6 +206,14 @@ async def send_audio(resp, score: Score):
     """Render a Score and respond with compressed audio."""
     audio = await run_heavy(render_score, score)
     data, mime = await run_heavy(encode_audio, wav_bytes(audio))
+    resp.content = data
+    resp.headers["Content-Type"] = mime
+    resp.headers["Cache-Control"] = "max-age=3600"
+
+
+async def send_buffer(resp, buf: np.ndarray):
+    """Respond with compressed audio from a raw float buffer (already [-1, 1])."""
+    data, mime = await run_heavy(encode_audio, wav_bytes(buf))
     resp.content = data
     resp.headers["Content-Type"] = mime
     resp.headers["Cache-Control"] = "max-age=3600"
@@ -489,6 +499,33 @@ async def chord_voice_leading(req, resp):
                   "total_motion": sum(abs(m["semitones"]) for m in moves)}
 
 
+@api.route("/api/chord/negative")
+async def chord_negative(req, resp):
+    """Mirror a chord across a key's tonic–dominant axis (negative harmony)."""
+    symbol = req.params.get("name", "Cmaj7")
+    tonic = req.params.get("key", "C")
+    try:
+        chord = _parse_chord(symbol)
+    except Exception as e:
+        return error(resp, 404, f"Couldn't parse chord '{symbol}': {e}")
+    try:
+        neg = chord.negative_harmony(tonic)
+        info = Key(tonic, "major").negative_harmony()
+        bridge = info["negative_dominant"]
+    except Exception as e:
+        return error(resp, 422, f"Negative harmony failed: {e}")
+    resp.media = {
+        "key": tonic,
+        "original": chord.symbol or symbol,
+        "original_tones": [str(t) for t in chord.tones],
+        "negative": neg.symbol or neg.identify(),
+        "negative_tones": [str(t) for t in neg.tones],
+        "axis": list(info["axis"]),
+        "axis_notes": list(info["axis_notes"]),
+        "bridge": bridge.symbol or bridge.identify(),
+    }
+
+
 @api.route("/api/symbols/audio")
 async def symbols_audio(req, resp):
     """Play a comma-separated list of chord symbols in sequence."""
@@ -646,6 +683,24 @@ async def key_view(req, resp):
         key = _key(req)
     except Exception as e:
         return error(resp, 400, f"Bad key: {e}")
+    try:
+        families = {fn: [c.symbol or c.identify() for c in chords]
+                    for fn, chords in key.chords_by_function().items()}
+    except Exception:
+        families = {}
+    try:
+        cof = key.circle_of_fifths()
+        circle = {
+            "position": cof["position"],
+            "relative": str(cof["relative"]),
+            "parallel": str(cof["parallel"]) if cof["parallel"] else None,
+            "dominant": {"key": str(cof["dominant"]["key"]),
+                         "shared": cof["dominant"]["shared_chords"]},
+            "subdominant": {"key": str(cof["subdominant"]["key"]),
+                            "shared": cof["subdominant"]["shared_chords"]},
+        }
+    except Exception:
+        circle = None
     resp.media = {
         "tonic": key.tonic_name,
         "mode": key.mode,
@@ -654,6 +709,8 @@ async def key_view(req, resp):
         "seventh_chords": list(key.seventh_chords),
         "signature": key.signature,
         "relative": str(key.relative),
+        "families": families,
+        "circle": circle,
     }
 
 
@@ -878,6 +935,59 @@ async def circle_of_fifths(req, resp):
             "flats": sig["flats"],
         })
     resp.media = {"keys": out}
+
+
+# --- Ragas --------------------------------------------------------------------
+
+@api.route("/api/ragas")
+async def ragas_list(req, resp):
+    """Every raga pytheory knows, with its thaat, time of day, and rasa."""
+    resp.media = {"ragas": [
+        {"name": r.name, "thaat": r.thaat, "time": r.time, "rasa": r.rasa}
+        for r in Raga.all()
+    ]}
+
+
+@api.route("/api/raga")
+async def raga_view(req, resp):
+    """A raga's aroha/avaroha, pakad, and its shruti (just) intonation."""
+    name = req.params.get("name", "Yaman")
+    sa = req.params.get("sa", "C")
+    try:
+        raga = Raga.get(name)
+    except KeyError:
+        return error(resp, 404, f"Unknown raga: {name}")
+    resp.media = {
+        "name": raga.name,
+        "thaat": raga.thaat,
+        "time": raga.time,
+        "rasa": raga.rasa,
+        "jati": raga.jati,
+        "vadi": raga.vadi,
+        "samvadi": raga.samvadi,
+        "aka": list(raga.aka),
+        "sa": sa,
+        "aroha": raga.aroha_swaras(),
+        "avaroha": raga.avaroha_swaras(),
+        "pakad": raga.pakad,
+        "notes": raga.note_names(sa),
+        "shruti": raga.shruti_table(sa),
+    }
+
+
+@api.route("/api/raga/audio")
+async def raga_audio(req, resp):
+    """Render the aroha then avaroha in shruti just intonation (sitar)."""
+    name = req.params.get("name", "Yaman")
+    sa = req.params.get("sa", "C")
+    try:
+        raga = Raga.get(name)
+    except KeyError:
+        return error(resp, 404, f"Unknown raga: {name}")
+    buf = await run_heavy(raga.render, f"{sa}4", synth="sitar",
+                          t=380, just=True, reverb=0.3)
+    buf = np.clip(buf.astype(np.float32) / SAMPLE_PEAK, -1.0, 1.0)
+    await send_buffer(resp, buf)
 
 
 # --- Songwriter ---------------------------------------------------------------

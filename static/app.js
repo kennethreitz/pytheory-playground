@@ -543,6 +543,47 @@ async function refreshKey() {
       : "no accidentals";
     $("key-extra").textContent = `signature: ${sigText} · relative: ${k.relative}`;
 
+    // chords by harmonic function (interchangeable within a row)
+    const FN_LABEL = { tonic: "Tonic", subdominant: "Subdominant", dominant: "Dominant" };
+    const fg = $("key-families");
+    fg.innerHTML = "";
+    for (const fn of ["tonic", "subdominant", "dominant"]) {
+      const chords = (k.families && k.families[fn]) || [];
+      if (!chords.length) continue;
+      const row = document.createElement("div");
+      row.className = "voicing-row";
+      const label = document.createElement("span");
+      label.className = "voicing-label fn-" + fn;
+      label.textContent = FN_LABEL[fn];
+      row.append(label);
+      chords.forEach((c) => {
+        const pill = document.createElement("span");
+        pill.className = "note-pill";
+        pill.textContent = c;
+        pill.append(" ", playButton(`/api/chord/audio?name=${encodeURIComponent(c)}`));
+        row.append(pill);
+      });
+      fg.append(row);
+    }
+
+    // circle-of-fifths neighbours + shared chords
+    const cc = $("key-circle");
+    if (k.circle) {
+      const c = k.circle;
+      const pos = c.position > 0 ? `${c.position}♯` : c.position < 0 ? `${-c.position}♭` : "0";
+      const short = (s) => s.replace(" major", "").replace(" minor", "m").replace(" diminished", "dim");
+      const neigh = (label, n) =>
+        `<div class="neighbour"><div class="nb-head">${label}<br><strong>${n.key}</strong></div>`
+        + `<div class="tones">shares ${n.shared.length}: ${n.shared.map(short).join(" · ")}</div></div>`;
+      cc.innerHTML =
+        `<p class="tones">position ${pos} · relative ${c.relative}`
+        + (c.parallel ? ` · parallel ${c.parallel}` : "") + `</p>`
+        + neigh("⟵ a fifth down", c.subdominant)
+        + neigh("a fifth up ⟶", c.dominant);
+    } else {
+      cc.innerHTML = "";
+    }
+
     updateShareUrl();
     const p = await api(`/api/progression?${progParams()}`);
     renderProgressionRow(p.chords);
@@ -1303,9 +1344,139 @@ async function refreshLab() {
       pill.append(" ", playButton(`/api/scale/audio?tonic=${encodeURIComponent(s.tonic)}&octave=4&name=${encodeURIComponent(s.scale)}`));
     });
     refreshVoiceLeading();
+    refreshNegative();
   } catch (e) {
     $("lab-error").textContent = e.message;
   }
+}
+
+async function refreshNegative() {
+  try {
+    const name = $("lab-symbol").value.trim();
+    const key = $("neg-key").value;
+    const d = await api(`/api/chord/negative?name=${encodeURIComponent(name)}&key=${encodeURIComponent(key)}`);
+    const row = $("neg-row");
+    row.innerHTML = "";
+    const orig = document.createElement("span");
+    orig.className = "note-pill";
+    orig.textContent = d.original;
+    orig.append(" ", playButton(`/api/voicing/audio?tones=${encodeURIComponent(d.original_tones.join(","))}`));
+    const arrow = document.createElement("span");
+    arrow.className = "tones";
+    arrow.textContent = "  →  ";
+    const neg = document.createElement("span");
+    neg.className = "note-pill tonic";
+    neg.textContent = d.negative;
+    neg.append(" ", playButton(`/api/voicing/audio?tones=${encodeURIComponent(d.negative_tones.join(","))}`));
+    row.append(orig, arrow, neg);
+    $("neg-meta").textContent =
+      `axis ${d.axis[0]}–${d.axis[1]} (hinge ${d.axis_notes[0]}/${d.axis_notes[1]}) · bridge chord ${d.bridge}`;
+  } catch (e) {
+    $("neg-meta").textContent = e.message;
+  }
+}
+
+async function refreshRaga() {
+  $("raga-error").textContent = "";
+  try {
+    const name = $("raga-name").value, sa = $("raga-sa").value;
+    const d = await api(`/api/raga?name=${encodeURIComponent(name)}&sa=${encodeURIComponent(sa)}`);
+    $("raga-title").textContent = d.name + (d.aka.length ? `  (${d.aka.join(", ")})` : "");
+    $("raga-meta").textContent = `${d.thaat} thaat · ${d.jati} · ${d.time} · ${d.rasa}`;
+    $("raga-aroha").textContent = d.aroha.join(" ");
+    $("raga-avaroha").textContent = d.avaroha.join(" ");
+    $("raga-pakad").textContent = d.pakad || "—";
+    $("raga-vadi").textContent = `${d.vadi} · ${d.samvadi}`;
+    pillRow($("raga-notes"), d.notes);
+    $("raga-shruti").innerHTML =
+      "<tr><th>swara</th><th>ratio</th><th>≈ note</th><th>Hz</th><th>cents off 12-TET</th></tr>"
+      + d.shruti.map((r) => {
+          const cls = r.cents_off > 1 ? "sharp" : r.cents_off < -1 ? "flat" : "";
+          const sign = r.cents_off > 0 ? "+" : "";
+          return `<tr><td><strong>${r.swara}</strong></td><td class="tones">${r.ratio}</td>`
+            + `<td>${r.note}</td><td class="tones">${r.hz}</td>`
+            + `<td class="cents ${cls}">${sign}${r.cents_off}¢</td></tr>`;
+        }).join("");
+    updateShareUrl();
+  } catch (e) {
+    $("raga-error").textContent = e.message;
+  }
+}
+
+function initMetronome() {
+  let ctx = null, running = false, timer = null;
+  let nextTime = 0, tick = 0, barCount = 0, bpm = 120;
+  const lights = $("metro-lights");
+
+  function buildLights() {
+    const beats = +$("metro-beats").value;
+    lights.innerHTML = "";
+    for (let i = 0; i < beats; i++) {
+      const d = document.createElement("div");
+      d.className = "metro-light" + (i === 0 ? " accent" : "");
+      lights.append(d);
+    }
+  }
+  function flash(i) {
+    [...lights.children].forEach((e, j) => e.classList.toggle("on", j === i));
+  }
+  function click(time, accent, sub) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = accent ? 1568 : sub ? 784 : 988;
+    g.gain.setValueAtTime(accent ? 0.5 : sub ? 0.16 : 0.32, time);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
+    o.connect(g).connect(ctx.destination);
+    o.start(time);
+    o.stop(time + 0.05);
+  }
+  function ramp() {
+    if (!$("metro-train").checked) return;
+    const every = +$("metro-every").value, step = +$("metro-step").value;
+    const to = +$("metro-to").value, start = +$("metro-bpm").value;
+    if (barCount > 0 && barCount % every === 0) {
+      const dir = to >= start ? 1 : -1;
+      bpm = dir > 0 ? Math.min(bpm + step, to) : Math.max(bpm - step, to);
+    }
+    $("metro-status").textContent = `${Math.round(bpm)} BPM → target ${to}`;
+  }
+  function loop() {
+    const beats = +$("metro-beats").value, sub = +$("metro-sub").value;
+    while (nextTime < ctx.currentTime + 0.12) {
+      const inBeat = tick % sub, beatIdx = Math.floor(tick / sub);
+      click(nextTime, beatIdx === 0 && inBeat === 0, inBeat !== 0);
+      if (inBeat === 0) {
+        const delay = Math.max(0, (nextTime - ctx.currentTime) * 1000);
+        setTimeout(() => flash(beatIdx), delay);
+      }
+      nextTime += (60 / bpm) / sub;
+      tick++;
+      if (tick >= beats * sub) { tick = 0; barCount++; ramp(); }
+    }
+    timer = setTimeout(loop, 25);
+  }
+  function start() {
+    ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === "suspended") ctx.resume();
+    bpm = +$("metro-bpm").value;
+    tick = 0; barCount = 0; nextTime = ctx.currentTime + 0.1;
+    running = true;
+    $("metro-toggle").innerHTML = "&#9632; Stop";
+    $("metro-status").textContent = $("metro-train").checked
+      ? `${bpm} BPM → target ${$("metro-to").value}` : "";
+    loop();
+  }
+  function stop() {
+    running = false;
+    clearTimeout(timer);
+    $("metro-toggle").innerHTML = "&#9654; Start";
+    [...lights.children].forEach((e) => e.classList.remove("on"));
+  }
+  buildLights();
+  $("metro-beats").addEventListener("change", buildLights);
+  $("metro-toggle").addEventListener("click", () => (running ? stop() : start()));
+  $("metro-bpm").addEventListener("change", () => {
+    if (running && !$("metro-train").checked) bpm = +$("metro-bpm").value;
+  });
 }
 
 async function refreshVoiceLeading() {
@@ -1702,6 +1873,17 @@ async function boot() {
   }
   if (META.sounds.includes("electric_piano")) $("sound").value = "electric_piano";
 
+  // ragas, negative harmony, metronome
+  const ragaList = (await api("/api/ragas")).ragas;
+  fill($("raga-name"), ragaList.map((r) => r.name), "Yaman");
+  fill($("raga-sa"), META.roots, "C");
+  ["raga-name", "raga-sa"].forEach((id) => $(id).addEventListener("change", refreshRaga));
+  $("raga-play").addEventListener("click", (e) =>
+    playUrl(`/api/raga/audio?name=${encodeURIComponent($("raga-name").value)}&sa=${encodeURIComponent($("raga-sa").value)}`, e.target));
+  fill($("neg-key"), META.roots, "C");
+  $("neg-key").addEventListener("change", refreshNegative);
+  initMetronome();
+
   // tab switching (with #hash deep links + shareable state params)
   const showPanel = (name) => {
     if (name === "groove") name = "song"; // Groove Lab merged into Songwriter
@@ -1721,6 +1903,7 @@ async function boot() {
     scales: refreshScale,
     keys: refreshKey,
     lab: refreshLab,
+    ragas: refreshRaga,
   };
   const applyHashState = (refresh) => {
     let [panel, query] = location.hash.slice(1).split("?");
@@ -1995,6 +2178,7 @@ async function boot() {
   refreshLab();
   refreshScale();
   refreshKey();
+  refreshRaga();
 }
 
 boot().catch((e) => {

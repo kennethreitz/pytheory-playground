@@ -411,3 +411,37 @@ details.card[open] > summary { margin-bottom: 0.85rem; }
 #song-mixer summary { cursor: pointer; }
 #song-mixer summary small { margin-left: 0.5rem; font-family: var(--mono); font-size: 0.7rem; }
 #song-mixer input[type="range"] { width: 8.5rem; }
+
+/* ── Ragas ── */
+label.inline { font-size: 0.8rem; color: var(--muted); margin-left: 0.75rem; }
+.swara-line { font-family: var(--mono); letter-spacing: 0.05em; }
+table.shruti { border-collapse: collapse; width: 100%; }
+table.shruti th {
+  color: var(--muted); font-weight: normal; text-align: left;
+  padding: 0.2rem 0.9rem 0.2rem 0; font-size: 0.85rem;
+}
+table.shruti td { padding: 0.2rem 0.9rem 0.2rem 0; border-top: 1px solid var(--line); }
+.cents { font-family: var(--mono); }
+.cents.flat { color: var(--deg3); }
+.cents.sharp { color: var(--deg2); }
+
+/* ── Keys: chords by function + circle neighbours ── */
+.fn-grid .voicing-label { min-width: 8rem; font-weight: 600; }
+.neighbours { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.4rem; }
+.neighbour {
+  flex: 1; min-width: 12rem; background: var(--code-bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 0.6rem 0.75rem;
+}
+.nb-head { color: var(--muted); margin-bottom: 0.3rem; }
+.nb-head strong { color: var(--ink); font-size: 1.1em; }
+
+/* ── Metronome ── */
+.metro-lights { display: flex; gap: 0.75rem; justify-content: center; padding: 1.1rem 0; }
+.metro-light {
+  width: 2.3rem; height: 2.3rem; border-radius: 50%;
+  background: var(--code-bg); border: 2px solid var(--line);
+  transition: background 60ms, box-shadow 60ms;
+}
+.metro-light.accent { border-color: var(--accent); }
+.metro-light.on { background: var(--accent2); box-shadow: 0 0 1rem var(--accent2); }
+.metro-light.accent.on { background: var(--accent); box-shadow: 0 0 1.25rem var(--accent); }
