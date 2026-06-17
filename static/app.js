@@ -1320,8 +1320,36 @@ async function refreshLab() {
     refreshVoiceLeading();
     refreshNegative();
     refreshReharmonize();
+    refreshNeo();
   } catch (e) {
     $("lab-error").textContent = e.message;
+  }
+}
+
+async function refreshNeo() {
+  const box = $("lab-neo");
+  try {
+    const name = $("lab-symbol").value.trim();
+    const d = await api(`/api/chord/neo?name=${encodeURIComponent(name)}`);
+    box.innerHTML = "";
+    for (const t of d.transforms) {
+      const row = document.createElement("div");
+      row.className = "voicing-row";
+      const tag = document.createElement("span");
+      tag.className = "voicing-label";
+      tag.textContent = t.label;
+      const pill = document.createElement("span");
+      pill.className = "note-pill";
+      pill.textContent = t.chord;
+      pill.append(" ", playButton(`/api/voicing/audio?tones=${encodeURIComponent(t.tones.join(","))}`));
+      const desc = document.createElement("span");
+      desc.className = "tones";
+      desc.textContent = t.description;
+      row.append(tag, pill, desc);
+      box.append(row);
+    }
+  } catch (e) {
+    box.innerHTML = `<span class="tones">major/minor triads only</span>`;
   }
 }
 
@@ -1565,8 +1593,70 @@ async function analyzeProgression() {
         .map((c) => `${c.type} (→ chord ${c.at + 1})`).join(" · ");
       out.appendChild(line);
     }
+    if (d.voice_leading?.length) {
+      const line = document.createElement("div");
+      line.className = "tones";
+      line.style.flexBasis = "100%";
+      line.style.color = "var(--accent)";
+      line.textContent = "part-writing: " + d.voice_leading.join(" · ");
+      out.appendChild(line);
+    }
   } catch (e) {
     $("analyze-error").textContent = e.message;
+  }
+}
+
+async function analyzeNonChordTones() {
+  $("nct-error").textContent = "";
+  const out = $("nct-result");
+  out.innerHTML = "";
+  try {
+    const melody = encodeURIComponent($("nct-melody").value);
+    const chord = encodeURIComponent($("nct-chord").value);
+    const d = await api(`/api/tools/non-chord-tones?melody=${melody}&chord=${chord}`);
+    for (const n of d.notes) {
+      const pill = document.createElement("span");
+      pill.className = "note-pill" + (n.chord_tone ? " tonic" : "");
+      pill.innerHTML = `${n.note} <small>${n.type}</small>`;
+      out.appendChild(pill);
+    }
+  } catch (e) {
+    $("nct-error").textContent = e.message;
+  }
+}
+
+async function buildRow() {
+  $("row-error").textContent = "";
+  try {
+    const q = $("row-notes").value.trim()
+      ? `?row=${encodeURIComponent($("row-notes").value.trim())}` : "";
+    const d = await api(`/api/serialism/row${q}`);
+    $("row-notes").value = d.row.join(" ");
+    $("row-summary").textContent =
+      `row: ${d.row.join(" ")}  ·  intervals ${d.intervals.join(" ")}`
+      + (d.all_interval ? "  ·  all-interval row ✦" : "");
+    const forms = $("row-forms");
+    forms.innerHTML = "";
+    for (const label of ["P0", "I0", "R0", "RI0"]) {
+      if (!d.forms[label]) continue;
+      const row = document.createElement("div");
+      row.className = "voicing-row";
+      const tag = document.createElement("span");
+      tag.className = "voicing-label";
+      tag.textContent = label;
+      const notes = document.createElement("span");
+      notes.className = "tones";
+      notes.textContent = d.forms[label].join(" ");
+      row.append(tag, notes);
+      forms.append(row);
+    }
+    // 12×12 matrix (P read across, I read down)
+    $("row-matrix-wrap").innerHTML = "<table class='matrix'>" + d.matrix
+      .map((mrow, i) => "<tr>" + mrow
+        .map((cell, j) => `<td class="${i === 0 || j === 0 ? "edge" : ""}">${cell}</td>`)
+        .join("") + "</tr>").join("") + "</table>";
+  } catch (e) {
+    $("row-error").textContent = e.message;
   }
 }
 
@@ -2047,6 +2137,17 @@ async function boot() {
   $("ident-go").addEventListener("click", identifyChord);
   $("analyze-go").addEventListener("click", analyzeProgression);
   $("detect-go").addEventListener("click", detectKey);
+  $("nct-go").addEventListener("click", analyzeNonChordTones);
+  $("row-go").addEventListener("click", buildRow);
+  $("row-play").addEventListener("click", (e) => {
+    const params = new URLSearchParams();
+    const r = $("row-notes").value.trim();
+    if (r) params.set("row", r);
+    if ($("sound").value) params.set("sound", $("sound").value);
+    const qs = params.toString();
+    playUrl(`/api/serialism/audio${qs ? "?" + qs : ""}`, e.target);
+  });
+  buildRow();
 
   setupConverter("midi", async () => {
     const { body } = await fileBody("midi-file", "Choose a MIDI file first.");

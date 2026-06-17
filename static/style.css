@@ -445,3 +445,12 @@ table.shruti td { padding: 0.2rem 0.9rem 0.2rem 0; border-top: 1px solid var(--l
 .metro-light.accent { border-color: var(--accent); }
 .metro-light.on { background: var(--accent2); box-shadow: 0 0 1rem var(--accent2); }
 .metro-light.accent.on { background: var(--accent); box-shadow: 0 0 1.25rem var(--accent); }
+
+/* ── Twelve-tone matrix ── */
+.matrix-wrap { overflow-x: auto; margin-top: 0.6rem; }
+table.matrix { border-collapse: collapse; font-family: var(--mono); font-size: 0.78rem; }
+table.matrix td {
+  border: 1px solid var(--line); text-align: center;
+  width: 1.9rem; height: 1.7rem; padding: 0; color: var(--ink);
+}
+table.matrix td.edge { color: var(--accent2); font-weight: 600; background: var(--code-bg); }

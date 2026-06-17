@@ -303,6 +303,12 @@ tuner.onmessage = (e) => {
           <div id="reharm-ideas"></div>
         </div>
         <div class="card">
+          <h3>Neo-Riemannian <small>chord.parallel() · .leading_tone_exchange() · .relative()</small></h3>
+          <p class="hint">The P / L / R transformations — each moves one voice a step to a
+            closely related triad (the moves behind Romantic and film harmony).</p>
+          <div id="lab-neo"></div>
+        </div>
+        <div class="card">
           <h3>Tuning &amp; beats <small>chord.beat_frequencies · Score(temperament=…)</small></h3>
           <p class="hint">The same chord in four temperaments — equal splits the octave evenly,
             just locks to pure ratios; listen for the beating.</p>
@@ -597,7 +603,7 @@ tuner.onmessage = (e) => {
       </div>
 
       <div class="card wide">
-        <h3>Progression analyzer <small>analyze_progression(…)</small></h3>
+        <h3>Progression analyzer <small>analyze_progression · find_cadences · check_voice_leading</small></h3>
         <div class="controls">
           <label>Chords (comma-separated)
             <input type="text" id="analyze-chords" value="C,Am,F,G" size="24">
@@ -612,6 +618,36 @@ tuner.onmessage = (e) => {
         </div>
         <div id="analyze-result" class="note-row"></div>
         <p class="error" id="analyze-error"></p>
+      </div>
+
+      <div class="card wide">
+        <h3>Non-chord tones <small>analyze_non_chord_tones(melody, chord)</small></h3>
+        <div class="controls">
+          <label>Melody (notes)
+            <input type="text" id="nct-melody" value="C4 D4 E4 F4 G4" size="24">
+          </label>
+          <label>Over chord
+            <input type="text" id="nct-chord" value="C" size="8" list="chord-symbols" autocomplete="off">
+          </label>
+          <button id="nct-go" class="play">Label</button>
+        </div>
+        <div id="nct-result" class="note-row"></div>
+        <p class="error" id="nct-error"></p>
+      </div>
+
+      <div class="card wide">
+        <h3>Twelve-tone row <small>ToneRow · .matrix() · .all_forms()</small></h3>
+        <div class="controls">
+          <label>Row (12 notes, or blank for random)
+            <input type="text" id="row-notes" value="" size="30" placeholder="e.g. C E G# D F# A# F A C# G B D#">
+          </label>
+          <button id="row-go" class="secondary">&#127922; Build</button>
+          <button id="row-play" class="play">&#9654; Play</button>
+        </div>
+        <p id="row-summary" class="tones"></p>
+        <div id="row-forms"></div>
+        <div id="row-matrix-wrap" class="matrix-wrap"></div>
+        <p class="error" id="row-error"></p>
       </div>
 
       <div class="card wide">

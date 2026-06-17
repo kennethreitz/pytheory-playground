@@ -22,6 +22,7 @@ from pytheory import (
     Score,
     Tone,
     TonedScale,
+    ToneRow,
     render_score,
     save_midi,
 )
@@ -1227,8 +1228,8 @@ async def identify_chord(req, resp):
 @api.route("/api/tools/analyze")
 async def analyze(req, resp):
     """Roman-numeral analysis of a chord progression, with secondary
-    dominants and cadences."""
-    from pytheory import analyze_progression, find_cadences
+    dominants, cadences, and a part-writing check."""
+    from pytheory import analyze_progression, find_cadences, check_voice_leading
 
     key = req.params.get("key", "C")
     mode = req.params.get("mode", "major")
@@ -1249,12 +1250,86 @@ async def analyze(req, resp):
         cadences = [{"at": i, "type": t} for i, t in find_cadences(chords, key)]
     except Exception:
         cadences = []
+    try:
+        issues = [i["description"] for i in check_voice_leading(chords)]
+    except Exception:
+        issues = []
     resp.media = {
         "key": f"{key} {mode}",
         "analysis": [{"symbol": s, "numeral": n, "secondary": x}
                      for s, n, x in zip(symbols, numerals, sd)],
         "cadences": cadences,
+        "voice_leading": issues,
     }
+
+
+_NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+
+
+@api.route("/api/tools/non-chord-tones")
+async def non_chord_tones(req, resp):
+    """Label each melody note as a chord tone or a non-chord tone
+    (passing / neighbor / suspension / …) against a chord."""
+    from pytheory import analyze_non_chord_tones
+
+    raw = req.params.get("melody", "")
+    chord_sym = req.params.get("chord", "C")
+    names = [s for s in raw.replace(",", " ").split() if s.strip()]
+    if not names:
+        return error(resp, 400, "Pass a melody, e.g. melody=C4 D4 E4 F4 G4")
+    try:
+        mel = [Tone.from_string(n if any(c.isdigit() for c in n) else f"{n}4")
+               for n in names]
+        chord = _parse_chord(chord_sym)
+    except Exception as e:
+        return error(resp, 422, f"Couldn't parse: {e}")
+    rows = analyze_non_chord_tones(mel, chord)
+    resp.media = {
+        "chord": chord.symbol or chord_sym,
+        "notes": [{"note": str(r["tone"]), "type": r["type"],
+                   "chord_tone": r["is_chord_tone"]} for r in rows],
+    }
+
+
+def _build_row(req):
+    raw = req.params.get("row", "")
+    names = [s for s in raw.replace(",", " ").split() if s.strip()]
+    if names:
+        return ToneRow(names)
+    import random
+    pcs = list(range(12))
+    random.shuffle(pcs)
+    return ToneRow(pcs)
+
+
+@api.route("/api/serialism/row")
+async def serialism_row(req, resp):
+    """Twelve-tone row: the four prime forms, the 12×12 matrix, and
+    whether it's an all-interval row."""
+    try:
+        row = _build_row(req)
+    except Exception as e:
+        return error(resp, 422, f"Bad row: {e}")
+    forms = row.all_forms()
+    resp.media = {
+        "row": row.note_names(),
+        "forms": {label: [_NOTE_NAMES[pc] for pc in pcs]
+                  for label, pcs in forms.items()},
+        "matrix": [[_NOTE_NAMES[pc] for pc in mrow] for mrow in row.matrix()],
+        "all_interval": bool(row.is_all_interval),
+        "intervals": list(row.interval_succession),
+    }
+
+
+@api.route("/api/serialism/audio")
+async def serialism_audio(req, resp):
+    try:
+        row = _build_row(req)
+    except Exception as e:
+        return error(resp, 422, f"Bad row: {e}")
+    tones = [Tone.from_string(f"{_NOTE_NAMES[pc]}4") for pc in row.row]
+    await send_audio(resp, score_for(tones, bpm=150, duration=0.35,
+                                     sound=_sound(req)))
 
 
 @api.route("/api/chord/reharmonize")
@@ -1283,6 +1358,33 @@ async def chord_reharmonize(req, resp):
             "description": i["description"],
         } for i in ideas],
     }
+
+
+@api.route("/api/chord/neo")
+async def chord_neo(req, resp):
+    """Neo-Riemannian P / L / R transformations of a triad."""
+    symbol = req.params.get("name", "C")
+    try:
+        chord = _parse_chord(symbol)
+    except Exception as e:
+        return error(resp, 404, f"Couldn't parse chord '{symbol}': {e}")
+    labels = (
+        ("P", "parallel", "Parallel — major ↔ minor (shared root & fifth)"),
+        ("L", "leading_tone_exchange", "Leittonwechsel — root drops a semitone (C → Em)"),
+        ("R", "relative", "Relative — to its relative major/minor (C → Am)"),
+    )
+    transforms = []
+    for short, meth, desc in labels:
+        try:
+            t = getattr(chord, meth)()
+            transforms.append({"label": short, "description": desc,
+                               "chord": t.symbol or t.identify(),
+                               "tones": [str(x) for x in t.tones]})
+        except Exception:
+            pass
+    if not transforms:
+        return error(resp, 422, "Neo-Riemannian transforms apply to major/minor triads.")
+    resp.media = {"original": chord.symbol or symbol, "transforms": transforms}
 
 
 @api.route("/api/tools/detect-key")
