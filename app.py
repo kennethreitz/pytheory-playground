@@ -464,6 +464,12 @@ async def chord_lab(req, resp):
                        TonedScale(tonic="C4")["major"].recommend(*names, top=5)]
     except Exception:
         solo_scales = []
+    try:
+        from pytheory import chord_scales, avoid_notes
+        improv_scales = chord_scales(chord)
+        avoid = [t.name for t in avoid_notes(chord)]
+    except Exception:
+        improv_scales, avoid = [], []
 
     resp.media = {
         "symbol": chord.symbol,
@@ -479,6 +485,8 @@ async def chord_lab(req, resp):
         "tritone_sub": tritone_sub,
         "extensions": extensions,
         "solo_scales": solo_scales,
+        "chord_scales": improv_scales,
+        "avoid_notes": avoid,
     }
 
 
@@ -1218,8 +1226,9 @@ async def identify_chord(req, resp):
 
 @api.route("/api/tools/analyze")
 async def analyze(req, resp):
-    """Roman-numeral analysis of a chord progression in a key."""
-    from pytheory import analyze_progression
+    """Roman-numeral analysis of a chord progression, with secondary
+    dominants and cadences."""
+    from pytheory import analyze_progression, find_cadences
 
     key = req.params.get("key", "C")
     mode = req.params.get("mode", "major")
@@ -1232,9 +1241,47 @@ async def analyze(req, resp):
     except Exception as e:
         return error(resp, 422, f"Couldn't parse chords: {e}")
     numerals = analyze_progression(chords, key=key, mode=mode)
+    try:
+        sd = analyze_progression(chords, key=key, mode=mode, secondary_dominants=True)
+    except Exception:
+        sd = numerals
+    try:
+        cadences = [{"at": i, "type": t} for i, t in find_cadences(chords, key)]
+    except Exception:
+        cadences = []
     resp.media = {
         "key": f"{key} {mode}",
-        "analysis": [{"symbol": s, "numeral": n} for s, n in zip(symbols, numerals)],
+        "analysis": [{"symbol": s, "numeral": n, "secondary": x}
+                     for s, n, x in zip(symbols, numerals, sd)],
+        "cadences": cadences,
+    }
+
+
+@api.route("/api/chord/reharmonize")
+async def chord_reharmonize(req, resp):
+    """Substitution ideas for a chord (reharmonize): tritone, diatonic,
+    secondary dominant, and negative-harmony mirror."""
+    from pytheory import reharmonize
+
+    symbol = req.params.get("name", "G7")
+    key = req.params.get("key", "C")
+    try:
+        chord = _parse_chord(symbol)
+    except Exception as e:
+        return error(resp, 404, f"Couldn't parse chord '{symbol}': {e}")
+    try:
+        ideas = reharmonize(chord, key)
+    except Exception as e:
+        return error(resp, 422, f"Reharmonize failed: {e}")
+    resp.media = {
+        "original": chord.symbol or symbol,
+        "key": key,
+        "ideas": [{
+            "technique": i["technique"],
+            "chord": i["chord"].symbol or i["chord"].identify(),
+            "tones": [str(t) for t in i["chord"].tones],
+            "description": i["description"],
+        } for i in ideas],
     }
 
 

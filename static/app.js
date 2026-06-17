@@ -1312,10 +1312,44 @@ async function refreshLab() {
       pill.innerHTML = `${s.tonic} ${s.scale} <small>${Math.round(s.fit * 100)}%</small>`;
       pill.append(" ", playButton(`/api/scale/audio?tonic=${encodeURIComponent(s.tonic)}&octave=4&name=${encodeURIComponent(s.scale)}`));
     });
+    const improv = d.chord_scales?.length
+      ? `chord-scales: ${d.chord_scales.join(" · ")}` : "";
+    const avoid = d.avoid_notes?.length
+      ? `   avoid: ${d.avoid_notes.join(" ")}` : "";
+    $("lab-improv").textContent = improv + avoid;
     refreshVoiceLeading();
     refreshNegative();
+    refreshReharmonize();
   } catch (e) {
     $("lab-error").textContent = e.message;
+  }
+}
+
+async function refreshReharmonize() {
+  try {
+    const name = $("lab-symbol").value.trim();
+    const key = $("reharm-key").value;
+    const d = await api(`/api/chord/reharmonize?name=${encodeURIComponent(name)}&key=${encodeURIComponent(key)}`);
+    const box = $("reharm-ideas");
+    box.innerHTML = "";
+    for (const idea of d.ideas) {
+      const row = document.createElement("div");
+      row.className = "voicing-row";
+      const tag = document.createElement("span");
+      tag.className = "voicing-label";
+      tag.textContent = idea.technique;
+      const pill = document.createElement("span");
+      pill.className = "note-pill";
+      pill.textContent = idea.chord;
+      pill.append(" ", playButton(`/api/voicing/audio?tones=${encodeURIComponent(idea.tones.join(","))}`));
+      const desc = document.createElement("span");
+      desc.className = "tones";
+      desc.textContent = idea.description;
+      row.append(tag, pill, desc);
+      box.append(row);
+    }
+  } catch (e) {
+    $("reharm-ideas").textContent = e.message;
   }
 }
 
@@ -1517,8 +1551,19 @@ async function analyzeProgression() {
     for (const item of d.analysis) {
       const pill = document.createElement("span");
       pill.className = "note-pill";
-      pill.innerHTML = `${item.symbol} <strong style="color:var(--accent2)">${item.numeral ?? "?"}</strong>`;
+      const sec = (item.secondary && item.secondary !== item.numeral)
+        ? ` <small style="color:var(--accent)">${item.secondary}</small>` : "";
+      pill.innerHTML = `${item.symbol} <strong style="color:var(--accent2)">${item.numeral ?? "?"}</strong>${sec}`;
       out.appendChild(pill);
+    }
+    if (d.cadences?.length) {
+      const line = document.createElement("div");
+      line.className = "tones";
+      line.style.flexBasis = "100%";
+      line.style.marginTop = "0.5rem";
+      line.textContent = "cadences: " + d.cadences
+        .map((c) => `${c.type} (→ chord ${c.at + 1})`).join(" · ");
+      out.appendChild(line);
     }
   } catch (e) {
     $("analyze-error").textContent = e.message;
@@ -1851,6 +1896,8 @@ async function boot() {
     playUrl(`/api/raga/audio?name=${encodeURIComponent($("raga-name").value)}&sa=${encodeURIComponent($("raga-sa").value)}`, e.target));
   fill($("neg-key"), META.roots, "C");
   $("neg-key").addEventListener("change", refreshNegative);
+  fill($("reharm-key"), META.roots, "C");
+  $("reharm-key").addEventListener("change", refreshReharmonize);
   initMetronome();
 
   // tab switching (with #hash deep links + shareable state params)

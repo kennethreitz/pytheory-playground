@@ -293,6 +293,16 @@ tuner.onmessage = (e) => {
           <p id="neg-meta" class="tones"></p>
         </div>
         <div class="card">
+          <h3>Reharmonize <small>reharmonize(chord, key)</small>
+            <label class="inline">in key
+              <select id="reharm-key"></select>
+            </label>
+          </h3>
+          <p class="hint">Substitution ideas — tritone sub, diatonic swaps, the secondary
+            dominant that tonicises it, and its negative-harmony mirror.</p>
+          <div id="reharm-ideas"></div>
+        </div>
+        <div class="card">
           <h3>Tuning &amp; beats <small>chord.beat_frequencies · Score(temperament=…)</small></h3>
           <p class="hint">The same chord in four temperaments — equal splits the octave evenly,
             just locks to pure ratios; listen for the beating.</p>
@@ -312,9 +322,10 @@ tuner.onmessage = (e) => {
           <p id="vl-total" class="tones"></p>
         </div>
         <div class="card">
-          <h3>Solo over it <small>scale.recommend(…)</small></h3>
+          <h3>Solo over it <small>scale.recommend(…) · chord_scales() · avoid_notes()</small></h3>
           <p class="hint">Scales that fit this chord's tones — improv starting points.</p>
           <div id="lab-solo" class="note-row"></div>
+          <p id="lab-improv" class="tones"></p>
         </div>
       </div>
       <p class="error" id="lab-error"></p>
