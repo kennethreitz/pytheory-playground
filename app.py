@@ -73,7 +73,7 @@ def _system_meta():
 SYSTEM_META = _system_meta()
 SCALE_NAMES = SYSTEM_META["western"]["scales"]
 
-api = responder.API(static_dir="static", static_route="/static")
+api = responder.API(static_dir="static", static_route="/static", sessions=False)
 
 # LilyPond embeds Guile Scheme, so engraving arbitrary user source would be
 # remote code execution. We only engrave LilyPond we generated ourselves,
