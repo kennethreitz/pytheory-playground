@@ -16,6 +16,7 @@ from pytheory import (
     Chord,
     Fretboard,
     Key,
+    Maqam,
     PROGRESSIONS,
     Raga,
     SYSTEMS,
@@ -37,7 +38,11 @@ SAMPLE_RATE = 44100
 INSTRUMENTS = ["guitar", "twelve_string", "ukulele", "banjo", "mandolin", "bass"]
 
 ROOTS = ["A", "Bb", "B", "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab"]
-QUALITIES = ["", "m", "5", "7", "9", "dim", "m6", "m7", "m9", "maj7", "maj9"]
+# Anything Chord.from_symbol can parse is voiceable since 0.55's computed
+# fingerings — charted shapes still win when a chart exists.
+QUALITIES = ["", "m", "5", "6", "7", "9", "11", "13", "dim", "dim7", "aug",
+             "sus2", "sus4", "7sus2", "7sus4", "add9",
+             "m6", "m7", "m9", "m7b5", "maj7", "maj9"]
 
 # Curated synth presets for the playback sound picker.
 SOUNDS = [s for s in (
@@ -146,6 +151,15 @@ def _parse_chord(symbol: str) -> Chord:
         return Chord.from_name(symbol)
     except Exception:
         return Chord.from_symbol(symbol)
+
+
+def _ascii_tab(label: str, positions, string_names) -> str:
+    """ASCII tab in the standard orientation (highest string on top),
+    from low-string-first positions/names."""
+    rows = [f"{nm}|--{'x' if p is None else p}--"
+            for nm, p in zip(reversed(list(string_names)),
+                             reversed(list(positions)))]
+    return "\n".join([label] + rows)
 
 
 def _sound(req):
@@ -303,25 +317,38 @@ async def chord_view(req, resp):
         return error(resp, 400, f"Unknown instrument: {instrument}")
     except ValueError as e:
         return error(resp, 400, str(e))
-    named = CHARTS["western"].get(name)
-    if named is None:
-        return error(resp, 404, f"No chart for chord: {name}")
     try:
-        fingering = named.fingering(fretboard=fretboard)
-        tab = named.tab(fretboard=fretboard)
+        chord = _parse_chord(name)
+    except Exception as e:
+        return error(resp, 404, f"Couldn't parse chord '{name}': {e}")
+    named = CHARTS["western"].get(name)
+    computed = named is None
+    try:
+        if named is not None:
+            fingering = named.fingering(fretboard=fretboard)
+            tab = named.tab(fretboard=fretboard)
+            tones = [t.name for t in named.acceptable_tones]
+        else:
+            # Beyond the charts: a voicing computed from the chord's notes
+            # (0.55's neck search — any symbol from_symbol can parse).
+            fingering = fretboard.chord(name)
+            tones = list(dict.fromkeys(t.name for t in chord.tones))
+            tab = _ascii_tab(chord.symbol or name, fingering.positions,
+                             fingering.string_names)
     except Exception as e:
         return error(resp, 422, f"Couldn't voice {name} on {instrument}: {e}")
-    chord = _parse_chord(name)
     resp.media = {
         "name": name,
         "instrument": instrument,
+        "computed": computed,
         "tab": tab,
         "positions": list(fingering.positions),  # low string first; null = muted
         "strings": list(fingering.string_names),
-        "tones": [t.name for t in named.acceptable_tones],
+        "tones": tones,
         "pitches": [str(t) for t in chord.tones],
         "formula": _chord_formula(chord),
-        "alternatives": _alt_fingerings(named, fretboard,
+        "alternatives": [] if computed else
+                        _alt_fingerings(named, fretboard,
                                         skip=tuple(fingering.positions)),
     }
 
@@ -630,13 +657,15 @@ def _board_positions(fretboard, tones, root_tone, frets):
     for t in tones:
         degree_of.setdefault(t.midi % 12, len(degree_of) + 1)
     root_pc = root_tone.midi % 12
+    # spell the board the way the scale/chord is spelled (Eb, not D#)
+    prefer_flats = any("b" in getattr(t, "name", "") for t in tones)
     strings = []
     for open_tone in fretboard.tones:  # low string first
         row = {"open": str(open_tone), "frets": []}
         for f in range(frets + 1):
             midi = open_tone.midi + f
             if midi % 12 in degree_of:
-                tone = Tone.from_midi(midi)
+                tone = Tone.from_midi(midi, prefer_flats=prefer_flats)
                 row["frets"].append({
                     "fret": f,
                     "note": tone.name,
@@ -797,14 +826,19 @@ def _chords_payload(numerals, chords):
         symbol = chord.symbol
         entry = {"numeral": numeral, "symbol": symbol, "tab": None, "positions": None}
         named = CHARTS["western"].get(symbol)
-        if named is not None:
-            try:
+        try:
+            if named is not None:
                 fingering = named.fingering(fretboard=fretboard)
                 entry["tab"] = named.tab(fretboard=fretboard)
-                entry["positions"] = list(fingering.positions)
-                entry["strings"] = list(fingering.string_names)
-            except Exception:
-                pass
+            else:
+                # uncharted (borrowed, secondary, exotic) — compute a voicing
+                fingering = fretboard.chord(symbol)
+                entry["tab"] = _ascii_tab(symbol, fingering.positions,
+                                          fingering.string_names)
+            entry["positions"] = list(fingering.positions)
+            entry["strings"] = list(fingering.string_names)
+        except Exception:
+            pass
         out.append(entry)
     return out
 
@@ -950,10 +984,15 @@ async def circle_of_fifths(req, resp):
 
 @api.route("/api/ragas")
 async def ragas_list(req, resp):
-    """Every raga pytheory knows, with its thaat, time of day, and rasa."""
+    """Every raga pytheory knows — 54 across two traditions since 0.55:
+    36 Hindustani (thaat) and 18 Carnatic (melakarta)."""
+    tradition = req.params.get("tradition", "").strip().lower()
+    ragas = Raga.by_tradition(tradition) if tradition in ("hindustani", "carnatic") \
+        else Raga.all()
     resp.media = {"ragas": [
-        {"name": r.name, "thaat": r.thaat, "time": r.time, "rasa": r.rasa}
-        for r in Raga.all()
+        {"name": r.name, "thaat": r.thaat, "time": r.time, "rasa": r.rasa,
+         "tradition": r.tradition}
+        for r in ragas
     ]}
 
 
@@ -968,7 +1007,8 @@ async def raga_view(req, resp):
         return error(resp, 404, f"Unknown raga: {name}")
     resp.media = {
         "name": raga.name,
-        "thaat": raga.thaat,
+        "thaat": raga.thaat,  # the melakarta for Carnatic ragas
+        "tradition": raga.tradition,
         "time": raga.time,
         "rasa": raga.rasa,
         "jati": raga.jati,
@@ -995,6 +1035,62 @@ async def raga_audio(req, resp):
         return error(resp, 404, f"Unknown raga: {name}")
     buf = await run_heavy(raga.render, f"{sa}4", synth="sitar",
                           t=380, just=True, reverb=0.3)
+    buf = np.clip(buf.astype(np.float32) / SAMPLE_PEAK, -1.0, 1.0)
+    await send_buffer(resp, buf)
+
+
+# --- Maqamat ------------------------------------------------------------------
+
+@api.route("/api/maqams")
+async def maqams_list(req, resp):
+    """Every Arabic maqam pytheory knows, with its family and mood."""
+    resp.media = {"maqams": [
+        {"name": m.name, "family": m.family, "mood": m.mood,
+         "quartertones": m.has_quartertones}
+        for m in Maqam.all()
+    ]}
+
+
+@api.route("/api/maqam")
+async def maqam_view(req, resp):
+    """A maqam's ajnas, seyir, and its quarter-tone (just) intonation."""
+    name = req.params.get("name", "Rast")
+    tonic = req.params.get("tonic", "C")
+    try:
+        maqam = Maqam.get(name)
+    except KeyError:
+        return error(resp, 404, f"Unknown maqam: {name}")
+    resp.media = {
+        "name": maqam.name,
+        "family": maqam.family,
+        "mood": maqam.mood,
+        "aka": list(maqam.aka),
+        "quartertones": maqam.has_quartertones,
+        "ajnas": maqam.ajnas,
+        "seyir": maqam.seyir,
+        "tonic": tonic,
+        "degrees": maqam.degree_names(),
+        "notes": maqam.note_names(tonic),
+        "table": maqam.maqam_table(tonic),
+    }
+
+
+@api.route("/api/maqam/audio")
+async def maqam_audio(req, resp):
+    """Render the ascent and descent in quarter-tone just intonation.
+
+    pytheory 0.57's Maqam.render defaults to an "oud" voice that isn't in
+    the Synth bank yet, so we ask for pluck (Karplus-Strong) explicitly —
+    the closest built-in sound to a plucked oud.
+    """
+    name = req.params.get("name", "Rast")
+    tonic = req.params.get("tonic", "C")
+    try:
+        maqam = Maqam.get(name)
+    except KeyError:
+        return error(resp, 404, f"Unknown maqam: {name}")
+    buf = await run_heavy(maqam.render, f"{tonic}3", synth="pluck",
+                          t=420, reverb=0.3)
     buf = np.clip(buf.astype(np.float32) / SAMPLE_PEAK, -1.0, 1.0)
     await send_buffer(resp, buf)
 
@@ -1212,10 +1308,8 @@ async def identify_chord(req, resp):
         chord = None
     name = fingering.identify()
     symbol = getattr(chord, "symbol", None)
-    # Compose the tab low-string-first, matching the chord panel's layout.
     label = name or symbol or "?"
-    tab = "\n".join([label] + [f"{nm}|--{'x' if p is None else p}--"
-                               for nm, p in zip(names, positions)])
+    tab = _ascii_tab(label, positions, names)
     resp.media = {
         "name": name,
         "symbol": symbol,
@@ -1489,9 +1583,50 @@ def _detect_score_key(score):
         return None
 
 
+def _midi_analysis(path, key="auto", mode="major"):
+    """Key, tempo, and a Roman-numeral chord timeline for a MIDI file —
+    the web face of `pytheory analyze song.mid` (0.57.2). Reads raw MIDI
+    events, so it sees true vertical harmony."""
+    from pytheory import analyze_progression
+    from pytheory.cli import _midi_chord_segments
+
+    segments, note_names, bpm, time_sig = _midi_chord_segments(path)
+    if not segments:
+        return None
+    if key not in ("auto", ""):
+        tonic, kmode = key, mode
+    else:
+        detected = Key.detect(*note_names) if note_names else None
+        tonic = detected.tonic_name if detected else None
+        kmode = detected.mode if detected else None
+    chords = [c for _, c, _ in segments]
+    romans = [None] * len(chords)
+    if tonic:
+        try:
+            romans = analyze_progression(chords, tonic, kmode,
+                                         secondary_dominants=True)
+        except Exception:
+            pass
+    limit = 64
+    return {
+        "key": f"{tonic} {kmode}" if tonic else None,
+        "bpm": bpm,
+        "time_signature": time_sig,
+        "total": len(segments),
+        "chords": [
+            {"beat": round(beat, 2),
+             "name": chord.identify() or " ".join(t.name for t in chord.tones),
+             "roman": roman,
+             "notes": [t.name for t in chord.tones]}
+            for (beat, chord, _), roman in zip(segments[:limit], romans)
+        ],
+    }
+
+
 @api.route("/api/tools/midi-convert")
 async def midi_convert(req, resp):
-    """POST raw MIDI bytes; returns LilyPond, ABC, MusicXML, and ASCII tab renderings."""
+    """POST raw MIDI bytes; returns LilyPond, ABC, MusicXML, and ASCII tab
+    renderings, plus a key-detected Roman-numeral chord timeline."""
     body = await req.content
     if not body:
         return error(resp, 400, "Upload a MIDI file as the request body.")
@@ -1503,12 +1638,18 @@ async def midi_convert(req, resp):
         path = f.name
     try:
         score = Score.from_midi(path)
+        try:
+            analysis = await run_heavy(_midi_analysis, path, key, mode)
+        except Exception:
+            analysis = None
     except Exception as e:
-        os.unlink(path)
         return error(resp, 422, f"Couldn't parse MIDI file: {e}")
-    os.unlink(path)
+    finally:
+        os.unlink(path)
 
-    resp.media = _score_outputs(score, title, key, mode)
+    out = _score_outputs(score, title, key, mode)
+    out["analysis"] = analysis
+    resp.media = out
 
 
 def _score_outputs(score, title, key="auto", mode="major"):

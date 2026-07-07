@@ -4,19 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PyTheory Playground</title>
-  <meta name="description" content="Music theory for humans — chords, scales, tuner, grooves & notation, computed live by pytheory.">
+  <meta name="description" content="Music theory for humans — chords, scales, keys, ragas & maqamat, tuner, grooves & notation, computed live by pytheory.">
+  <meta name="theme-color" content="#0d1117">
 
   <!-- social cards (__BASE__ is filled in by the server) -->
   <meta property="og:type" content="website">
   <meta property="og:title" content="PyTheory Playground">
-  <meta property="og:description" content="Music theory for humans — chords, scales, tuner, grooves & notation, computed live by pytheory.">
+  <meta property="og:description" content="Music theory for humans — chords, scales, keys, ragas & maqamat, tuner, grooves & notation, computed live by pytheory.">
   <meta property="og:url" content="__BASE__/">
   <meta property="og:image" content="__BASE__/static/og.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="PyTheory Playground">
-  <meta name="twitter:description" content="Music theory for humans — chords, scales, tuner, grooves & notation, computed live by pytheory.">
+  <meta name="twitter:description" content="Music theory for humans — chords, scales, keys, ragas & maqamat, tuner, grooves & notation, computed live by pytheory.">
   <meta name="twitter:image" content="__BASE__/static/og.png">
 
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#127928;</text></svg>">
@@ -32,7 +33,9 @@
     <p class="tagline">Music theory for humans — every result below is computed live by
       <a href="https://github.com/kennethreitz/pytheory" target="_blank" rel="noopener">pytheory</a>
       <span id="version"></span> on the server.</p>
-    <nav id="tabs">
+  </header>
+  <div id="navbar">
+    <nav id="tabs" aria-label="Playground panels">
       <button data-panel="about" class="active">About</button>
       <span class="nav-sep"></span>
       <button data-panel="chords">Guitar Tab</button>
@@ -42,16 +45,18 @@
       <button data-panel="lab">Chord Lab</button>
       <button data-panel="scales">Scales</button>
       <button data-panel="keys">Keys &amp; Progressions</button>
+      <span class="nav-sep"></span>
       <button data-panel="ragas">Ragas</button>
+      <button data-panel="maqamat">Maqamat</button>
       <span class="nav-sep"></span>
       <button data-panel="song">Songwriter</button>
       <span class="nav-sep"></span>
       <button data-panel="tools">Tools</button>
       <label id="sound-wrap" title="Playback sound (pytheory synth presets)">&#9835;
-        <select id="sound"></select>
+        <select id="sound" aria-label="Playback sound"></select>
       </label>
     </nav>
-  </header>
+  </div>
 
   <main>
     <!-- ============ About ============ -->
@@ -68,9 +73,11 @@
         <p>Everything on this site is computed live by pytheory on the server — no music theory is
         re-implemented in JavaScript. Each card cites the API call behind it. Explore:</p>
         <ul>
-          <li><a href="#chords" class="goto" data-panel="chords">Guitar Tab</a> — chord charts for
-            six fretted instruments, with custom tunings, capo, and a click-to-edit fretboard that
-            names whatever you finger.</li>
+          <li><a href="#chords" class="goto" data-panel="chords">Guitar Tab</a> — chord diagrams
+            for six fretted instruments, with custom tunings, capo, and a click-to-edit fretboard
+            that names whatever you finger. Charted chords keep their curated shapes; anything
+            else (<em>F&#9839;m7&#9837;5</em>, <em>Gadd9</em>, <em>C7sus4</em>&hellip;) gets a
+            voicing computed from its notes.</li>
           <li><a href="#lab" class="goto" data-panel="lab">Chord Lab</a> — voicings, inversions,
             tension, pitch-class set theory, and tritone substitutions for any chord symbol.</li>
           <li><a href="#scales" class="goto" data-panel="scales">Scales</a> — every scale and mode
@@ -78,13 +85,20 @@
           <li><a href="#keys" class="goto" data-panel="keys">Keys &amp; Progressions</a> — diatonic
             chords, borrowed chords, secondary dominants, named progressions, and a modulation
             planner.</li>
+          <li><a href="#ragas" class="goto" data-panel="ragas">Ragas</a> — fifty-four rāgas across
+            the Hindustani and Carnatic traditions: aroha &amp; avaroha, pakad, thaat or melakarta,
+            and true shruti just intonation, played on a sitar.</li>
+          <li><a href="#maqamat" class="goto" data-panel="maqamat">Maqamat</a> — ten Arabic maqāmāt
+            with their ajnas and seyir, tuned to real quarter-tones — the half-flat neutral
+            intervals a piano can't play, rendered where they actually sit.</li>
           <li><a href="#song" class="goto" data-panel="song">Songwriter</a> — sketch a whole
             arrangement from a vibe: sections, one hundred drum grooves with fills, chord styles,
             bass, and fade-out, rendered as audio, MIDI, or engraved sheet music.</li>
           <li><a href="#tools" class="goto" data-panel="tools">Tools</a> — identify chords from
             fret positions, analyze progressions, detect keys, transcribe hummed or whistled
             recordings into notation, and convert MIDI to LilyPond (with PDF engraving), ABC,
-            MusicXML, or tab.</li>
+            MusicXML, or tab — complete with a key-detected, Roman-numeral chord timeline of the
+            file.</li>
         </ul>
 
         <h3>Install it</h3>
@@ -150,8 +164,10 @@
                 Whatever you finger, pytheory names it and keeps everything else in sync.</p>
             </div>
           </div>
-          <h4>More voicings <small>NamedChord.fingerings(…)</small></h4>
-          <div id="chord-alts" class="prog-row"></div>
+          <div id="chord-alts-wrap">
+            <h4>More voicings <small>NamedChord.fingerings(…)</small></h4>
+            <div id="chord-alts" class="prog-row"></div>
+          </div>
         </div>
         <div class="card">
           <h3>ASCII tab <small>NamedChord.tab(fretboard=…)</small></h3>
@@ -443,7 +459,7 @@ tuner.onmessage = (e) => {
             </label>
             <span id="key-suggestions" class="note-row"></span>
           </div>
-        </div>
+        </details>
         <details class="card wide">
           <summary><h3>Modulation planner <small>key.modulation_path(…) · key.pivot_chords(…)</small></h3></summary>
           <div class="controls">
@@ -709,6 +725,10 @@ tuner.onmessage = (e) => {
         </div>
         <div id="midi-outputs" class="hidden">
           <p id="midi-detected" class="hint"></p>
+          <details id="midi-analysis" class="hidden">
+            <summary>Chord timeline <small class="custom-note">pytheory analyze song.mid &mdash; Key.detect &middot; analyze_progression(secondary_dominants=True)</small></summary>
+            <div class="matrix-wrap"><table id="midi-analysis-table" class="shruti"></table></div>
+          </details>
           <nav class="subtabs" id="midi-format-tabs">
             <button data-fmt="lilypond" class="active">LilyPond</button>
             <button data-fmt="abc">ABC</button>
@@ -727,6 +747,13 @@ tuner.onmessage = (e) => {
     <!-- ============ Ragas ============ -->
     <section id="panel-ragas" class="panel">
       <div class="controls">
+        <label>Tradition
+          <select id="raga-tradition">
+            <option value="" selected>all (54)</option>
+            <option value="hindustani">Hindustani (36)</option>
+            <option value="carnatic">Carnatic (18)</option>
+          </select>
+        </label>
         <label>Raga
           <select id="raga-name"></select>
         </label>
@@ -754,6 +781,41 @@ tuner.onmessage = (e) => {
         </div>
       </div>
       <p class="error" id="raga-error"></p>
+    </section>
+
+    <!-- ============ Maqamat ============ -->
+    <section id="panel-maqamat" class="panel">
+      <div class="controls">
+        <label>Maqam
+          <select id="maqam-name"></select>
+        </label>
+        <label>Tonic
+          <select id="maqam-tonic"></select>
+        </label>
+        <button id="maqam-play" class="play">&#9654; Play (quarter-tone)</button>
+      </div>
+      <div class="results">
+        <div class="card wide">
+          <h3 id="maqam-title">—</h3>
+          <p id="maqam-meta" class="tones"></p>
+          <table class="kv">
+            <tr><td>ajnas <small>building blocks</small></td><td id="maqam-ajnas"></td></tr>
+            <tr><td>seyir <small>melodic journey</small></td><td id="maqam-seyir"></td></tr>
+            <tr><td>degrees</td><td id="maqam-degrees" class="swara-line"></td></tr>
+          </table>
+          <div id="maqam-notes" class="note-row"></div>
+          <p class="hint">A <em>&darr;</em> degree is a half-flat — the neutral 2nds, 3rds, 6ths
+            and 7ths a piano can't play, sitting a quarter-tone low. The note names above are
+            only the nearest 12-TET approximations; the table below is the real tuning.</p>
+        </div>
+        <div class="card wide">
+          <h3>Quarter-tone intonation <small>maqam.maqam_table(tonic) — just vs 12-TET</small></h3>
+          <p class="hint">Each degree's just ratio and how far it sits from the equal-tempered
+            piano (in cents) — Rast's neutral third floats ~45&cent; under the tempered E.</p>
+          <table id="maqam-table" class="shruti"></table>
+        </div>
+      </div>
+      <p class="error" id="maqam-error"></p>
     </section>
 
     <!-- ============ Metronome ============ -->

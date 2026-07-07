@@ -240,7 +240,7 @@ async function identifyCurrentVoicing() {
 }
 
 async function refreshAlternatives(symbol) {
-  if (!symbol || !META.chords.includes(symbol)) return;
+  if (!symbol) return;
   try {
     const c = await api(`/api/chord?name=${encodeURIComponent(symbol)}&instrument=${$("chord-instrument").value}${chordTuning()}`);
     renderAlternatives(c.alternatives || []);
@@ -254,7 +254,10 @@ async function refreshChord() {
   $("chord-error").textContent = "";
   try {
     const c = await api(`/api/chord?name=${encodeURIComponent(name)}&instrument=${instrument}${chordTuning()}`);
-    $("chord-title").textContent = c.name;
+    // Charted chords keep their curated shape; anything else gets a voicing
+    // computed from its notes (Fretboard.chord, pytheory 0.55+).
+    $("chord-title").innerHTML = c.computed
+      ? `${c.name} <small class="custom-note">computed voicing</small>` : c.name;
     $("chord-tab").textContent = c.tab;
     $("chord-tones").textContent = `tones: ${c.tones.join(" · ")}`;
     renderFormula(c.formula);
@@ -362,6 +365,7 @@ async function refreshGuitarScale() {
 // alternative voicings as clickable mini diagrams
 function renderAlternatives(alts) {
   const row = $("chord-alts");
+  $("chord-alts-wrap").classList.toggle("hidden", !alts.length);
   row.innerHTML = "";
   for (const positions of alts) {
     const div = document.createElement("div");
@@ -721,6 +725,23 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(a.href);
 }
 
+// Roman-numeral chord timeline from /api/tools/midi-convert (0.57.2's
+// `pytheory analyze song.mid`, on the web).
+function renderMidiAnalysis(box, a) {
+  box.classList.toggle("hidden", !a);
+  if (!a) return;
+  const fn = (roman) => numeralFunction((roman || "").split("/")[0]);
+  $("midi-analysis-table").innerHTML =
+    "<tr><th>beat</th><th>roman</th><th>chord</th><th>notes</th></tr>"
+    + a.chords.map((c) =>
+        `<tr><td class="tones">${c.beat}</td>`
+        + `<td class="${fn(c.roman)}"><strong>${c.roman ?? "·"}</strong></td>`
+        + `<td>${c.name}</td><td class="tones">${c.notes.join(" ")}</td></tr>`).join("")
+    + (a.total > a.chords.length
+        ? `<tr><td colspan="4" class="tones">… ${a.total - a.chords.length} more chord changes</td></tr>`
+        : "");
+}
+
 // Shared converter UI (MIDI + audio cards): format subtabs, downloads, PDF engraving.
 function setupConverter(prefix, buildRequest) {
   const state = { outputs: null, format: "lilypond" };
@@ -754,9 +775,13 @@ function setupConverter(prefix, buildRequest) {
       if (!r.ok) throw new Error(data.error || r.statusText);
       state.outputs = data;
       $(`${prefix}-outputs`).classList.remove("hidden");
+      const a = data.analysis;
       $(`${prefix}-detected`).textContent =
         (data.detected_key ? `Detected key: ${data.detected_key}` : `Key: ${data.key}`) +
-        (data.bpm ? ` · ${Math.round(data.bpm)} bpm` : "");
+        (data.bpm ? ` · ${Math.round(data.bpm)} bpm` : "") +
+        (a ? ` · ${Math.round(a.bpm)} bpm · ${a.time_signature} · ${a.total} chord change${a.total === 1 ? "" : "s"}` : "");
+      const analysisBox = $(`${prefix}-analysis`);
+      if (analysisBox) renderMidiAnalysis(analysisBox, a);
       const midiBtn = $(`${prefix}-midi-dl`);
       if (midiBtn) midiBtn.classList.toggle("hidden", !data.midi_b64);
       show(state.format);
@@ -1252,6 +1277,7 @@ function playButton(url) {
   const b = document.createElement("button");
   b.className = "mini-play";
   b.textContent = "▶";
+  b.setAttribute("aria-label", "Play");
   b.addEventListener("click", (e) => playUrl(url + soundQ(), e.target));
   return b;
 }
@@ -1407,30 +1433,72 @@ async function refreshNegative() {
   }
 }
 
+// Just-intonation table shared by ragas (shruti) and maqamat (quarter-tones):
+// ratio, nearest 12-TET note, Hz, and signed cents deviation per degree.
+function intonationTable(el, label, rows) {
+  el.innerHTML =
+    `<tr><th>${label}</th><th>ratio</th><th>≈ note</th><th>Hz</th><th>cents off 12-TET</th></tr>`
+    + rows.map((r) => {
+        const cls = r.cents_off > 1 ? "sharp" : r.cents_off < -1 ? "flat" : "";
+        const sign = r.cents_off > 0 ? "+" : "";
+        return `<tr><td><strong>${r.swara ?? r.degree}</strong></td><td class="tones">${r.ratio}</td>`
+          + `<td>${r.note}</td><td class="tones">${r.hz}</td>`
+          + `<td class="cents ${cls}">${sign}${r.cents_off}¢</td></tr>`;
+      }).join("");
+}
+
+let ragaList = [];
+
+// Repopulate the raga picker for the chosen tradition, keeping the
+// current raga when it belongs there.
+function syncRagaList() {
+  const trad = $("raga-tradition").value;
+  const names = ragaList
+    .filter((r) => !trad || r.tradition === trad)
+    .map((r) => r.name);
+  const cur = $("raga-name").value;
+  fill($("raga-name"), names,
+       names.includes(cur) ? cur : names.includes("Yaman") ? "Yaman" : names[0]);
+}
+
 async function refreshRaga() {
   $("raga-error").textContent = "";
   try {
     const name = $("raga-name").value, sa = $("raga-sa").value;
     const d = await api(`/api/raga?name=${encodeURIComponent(name)}&sa=${encodeURIComponent(sa)}`);
     $("raga-title").textContent = d.name + (d.aka.length ? `  (${d.aka.join(", ")})` : "");
-    $("raga-meta").textContent = `${d.thaat} thaat · ${d.jati} · ${d.time} · ${d.rasa}`;
+    // Hindustani ragas belong to a thaat; Carnatic ones to a melakarta.
+    const parent = d.tradition === "carnatic" ? `melakarta ${d.thaat}` : `${d.thaat} thaat`;
+    $("raga-meta").textContent = `${d.tradition} · ${parent} · ${d.jati} · ${d.time} · ${d.rasa}`;
     $("raga-aroha").textContent = d.aroha.join(" ");
     $("raga-avaroha").textContent = d.avaroha.join(" ");
     $("raga-pakad").textContent = d.pakad || "—";
     $("raga-vadi").textContent = `${d.vadi} · ${d.samvadi}`;
     pillRow($("raga-notes"), d.notes);
-    $("raga-shruti").innerHTML =
-      "<tr><th>swara</th><th>ratio</th><th>≈ note</th><th>Hz</th><th>cents off 12-TET</th></tr>"
-      + d.shruti.map((r) => {
-          const cls = r.cents_off > 1 ? "sharp" : r.cents_off < -1 ? "flat" : "";
-          const sign = r.cents_off > 0 ? "+" : "";
-          return `<tr><td><strong>${r.swara}</strong></td><td class="tones">${r.ratio}</td>`
-            + `<td>${r.note}</td><td class="tones">${r.hz}</td>`
-            + `<td class="cents ${cls}">${sign}${r.cents_off}¢</td></tr>`;
-        }).join("");
+    intonationTable($("raga-shruti"), "swara", d.shruti);
     updateShareUrl();
   } catch (e) {
     $("raga-error").textContent = e.message;
+  }
+}
+
+async function refreshMaqam() {
+  $("maqam-error").textContent = "";
+  try {
+    const name = $("maqam-name").value, tonic = $("maqam-tonic").value;
+    const d = await api(`/api/maqam?name=${encodeURIComponent(name)}&tonic=${encodeURIComponent(tonic)}`);
+    $("maqam-title").textContent = `Maqam ${d.name}`
+      + (d.aka.length ? `  (${d.aka.join(", ")})` : "");
+    $("maqam-meta").textContent = `${d.family} family · ${d.mood}`
+      + (d.quartertones ? " · quarter-tones" : " · no quarter-tones");
+    $("maqam-ajnas").textContent = d.ajnas;
+    $("maqam-seyir").textContent = d.seyir;
+    $("maqam-degrees").textContent = d.degrees.join(" ");
+    pillRow($("maqam-notes"), d.notes);
+    intonationTable($("maqam-table"), "degree", d.table);
+    updateShareUrl();
+  } catch (e) {
+    $("maqam-error").textContent = e.message;
   }
 }
 
@@ -1890,6 +1958,26 @@ const SHARE = {
       if (p.get("to")) $("vl-to").value = p.get("to");
     },
   },
+  ragas: {
+    collect() {
+      const s = { name: $("raga-name").value, sa: $("raga-sa").value };
+      if ($("raga-tradition").value) s.tradition = $("raga-tradition").value;
+      return s;
+    },
+    apply(p) {
+      if (p.get("tradition") !== null) $("raga-tradition").value = p.get("tradition") || "";
+      syncRagaList();
+      if (p.get("name")) $("raga-name").value = p.get("name");
+      if (p.get("sa")) $("raga-sa").value = p.get("sa");
+    },
+  },
+  maqamat: {
+    collect() { return { name: $("maqam-name").value, tonic: $("maqam-tonic").value }; },
+    apply(p) {
+      if (p.get("name")) $("maqam-name").value = p.get("name");
+      if (p.get("tonic")) $("maqam-tonic").value = p.get("tonic");
+    },
+  },
   tuner: {
     collect() {
       return { instrument: $("tuner-instrument").value, tuning: $("tuner-tuning").value,
@@ -1977,13 +2065,20 @@ async function boot() {
   }
   if (META.sounds.includes("electric_piano")) $("sound").value = "electric_piano";
 
-  // ragas, negative harmony, metronome
-  const ragaList = (await api("/api/ragas")).ragas;
-  fill($("raga-name"), ragaList.map((r) => r.name), "Yaman");
+  // ragas & maqamat, negative harmony, metronome
+  ragaList = (await api("/api/ragas")).ragas;
+  syncRagaList();
   fill($("raga-sa"), META.roots, "C");
+  $("raga-tradition").addEventListener("change", () => { syncRagaList(); refreshRaga(); });
   ["raga-name", "raga-sa"].forEach((id) => $(id).addEventListener("change", refreshRaga));
   $("raga-play").addEventListener("click", (e) =>
     playUrl(`/api/raga/audio?name=${encodeURIComponent($("raga-name").value)}&sa=${encodeURIComponent($("raga-sa").value)}`, e.target));
+  const maqamList = (await api("/api/maqams")).maqams;
+  fill($("maqam-name"), maqamList.map((m) => m.name), "Rast");
+  fill($("maqam-tonic"), META.roots, "C");
+  ["maqam-name", "maqam-tonic"].forEach((id) => $(id).addEventListener("change", refreshMaqam));
+  $("maqam-play").addEventListener("click", (e) =>
+    playUrl(`/api/maqam/audio?name=${encodeURIComponent($("maqam-name").value)}&tonic=${encodeURIComponent($("maqam-tonic").value)}`, e.target));
   fill($("neg-key"), META.roots, "C");
   $("neg-key").addEventListener("change", refreshNegative);
   fill($("reharm-key"), META.roots, "C");
@@ -1994,8 +2089,12 @@ async function boot() {
   const showPanel = (name) => {
     if (name === "groove") name = "song"; // Groove Lab merged into Songwriter
     if (!$(`panel-${name}`)) return;
-    document.querySelectorAll("#tabs button").forEach((x) =>
-      x.classList.toggle("active", x.dataset.panel === name));
+    document.querySelectorAll("#tabs button").forEach((x) => {
+      const active = x.dataset.panel === name;
+      x.classList.toggle("active", active);
+      if (active) x.setAttribute("aria-current", "page");
+      else x.removeAttribute("aria-current");
+    });
     document.querySelectorAll(".panel").forEach((x) =>
       x.classList.toggle("active", x.id === `panel-${name}`));
   };
@@ -2010,6 +2109,7 @@ async function boot() {
     keys: refreshKey,
     lab: refreshLab,
     ragas: refreshRaga,
+    maqamat: refreshMaqam,
   };
   const applyHashState = (refresh) => {
     let [panel, query] = location.hash.slice(1).split("?");
@@ -2278,6 +2378,7 @@ async function boot() {
   refreshScale();
   refreshKey();
   refreshRaga();
+  refreshMaqam();
 }
 
 boot().catch((e) => {

@@ -24,47 +24,64 @@ $ docker run -p 5042:5042 pytheory-playground
 ## What's inside
 
 - **About** — what pytheory is and how to install it.
-- **Guitar Tab** — chord charts for six fretted instruments with named guitar
-  tunings (drop d, DADGAD, …), fully custom tunings, and capo support. The
-  chord diagram is click-editable (pytheory names whatever you finger and
-  selects the matching chord), alternative voicings up the neck load into the
-  editor with a click, and an "on the neck" fretboard maps any scale — or the
-  chord's own tones — across 12 frets, every note clickable and audible.
-- **Tuner** — pytheory 0.47's native tuner: mic → YIN → note + signed cents at
-  20 readings/sec over a Server-Sent Events stream, with a needle that goes
-  green within ±5 cents. Chromatic or per-instrument (strings light up, click
-  one for a reference tone), in any tonal system — tune to *Sa* if you like.
-  Falls back to browser-mic capture when the server has no microphone (Docker).
+- **Guitar Tab** — chord diagrams for six fretted instruments with named guitar
+  tunings (drop d, DADGAD, …), fully custom tunings, and capo support. Charted
+  chords keep their curated shapes; any other parseable symbol (`F#m7b5`,
+  `Gadd9`, `C7sus4`, …) gets a voicing computed from its notes (pytheory
+  0.55's neck search). The chord diagram is click-editable (pytheory names
+  whatever you finger and selects the matching chord), alternative voicings up
+  the neck load into the editor with a click, and an "on the neck" fretboard
+  maps any scale — or the chord's own tones — across 12 frets, every note
+  clickable and audible.
+- **Tuner** — pytheory's native tuner: mic → YIN → note + signed cents at
+  20 readings/sec over a Server-Sent Events stream, with needle and strobe
+  displays that settle within ±5 cents. Chromatic or per-instrument (strings
+  light up, click one for a reference tone), in any tonal system — tune to
+  *Sa* if you like. Also listens for whole chords (chromagram matching) and
+  falls back to browser-mic capture when the server has no microphone (Docker).
+- **Metronome** — Web Audio click track with subdivisions and a tempo trainer
+  that ramps the BPM while you practise.
 - **Chord Lab** — voicings (inversions, drop 2/3, open), interval structure,
   pitch-class set theory (Forte numbers), tension/dissonance scoring, tritone
-  substitutions, available extensions, beat frequencies, and the same chord
-  playable in four temperaments (equal, pythagorean, meantone, just) — listen
-  for the beating disappear under just intonation.
+  substitutions, reharmonization ideas, neo-Riemannian P/L/R transforms,
+  negative harmony, voice leading, chord-scales with avoid notes, beat
+  frequencies, and the same chord playable in four temperaments (equal,
+  pythagorean, meantone, just) — listen for the beating disappear under just
+  intonation.
 - **Scales** — every scale and mode across sixteen tonal systems (western,
-  Indian rāgas, Arabic maqāmāt, gamelan slendro/pelog, 19-TET, Bohlen–Pierce…)
-  with microtonal audio, harmonization, a piano view, and per-instrument
-  fretboard diagrams.
+  gamelan slendro/pelog, 19-TET, Bohlen–Pierce…) with microtonal audio,
+  harmonization, a piano view, and per-instrument fretboard diagrams.
 - **Keys & Progressions** — diatonic triads/sevenths, borrowed chords,
   secondary dominants, chord suggestions, named progressions with per-chord
   diagrams, an interactive circle of fifths, a modulation planner with pivot
   chords, audio playback, and MIDI download.
+- **Ragas** — all 54 rāgas across both traditions (36 Hindustani, 18 Carnatic):
+  aroha & avaroha, pakad, vadi/samvadi, thaat or melakarta, and a shruti table
+  of the true just intonation — playable on a sitar, movable Sa.
+- **Maqamat** — ten Arabic maqāmāt with their ajnas and seyir, and a
+  quarter-tone table showing where every neutral interval actually sits
+  (Rast's neutral third floats ~45¢ under the tempered major third) — rendered
+  in real quarter-tone just intonation.
 - **Songwriter** — one click sketches a complete arrangement in any key from a
   vibe (pop, rock, jazz, blues, folk, lofi, latin): named sections built on
   `Score.section()`, one hundred drum grooves with auto-fills, a chord style
   per section (block / strummed / arpeggiated / drums only), a root-fifth
   bass line, swing, and a fade-out — fully editable, then rendered as audio,
   MIDI, or engraved sheet music.
-- **Harmonize** — hum or whistle a melody; pytheory transcribes it, detects
-  the key, picks a chord for every bar, and plays your recording back over
-  piano and bass — downloadable as MIDI or engraved sheet music.
 - **Tools**
+  - *Note inspector* — solfège, Helmholtz, MIDI, frequency at any reference
+    pitch and temperament, and the overtone series.
   - *Chord identifier* — fret positions (any instrument/tuning) → chord name.
-  - *Progression analyzer* — chord symbols → Roman-numeral analysis.
+  - *Progression analyzer* — chord symbols → Roman-numeral analysis with
+    secondary dominants, cadences, and a part-writing check.
+  - *Non-chord tones* — label a melody's passing/neighbor/suspension tones.
+  - *Twelve-tone row* — prime forms, the 12×12 matrix, all-interval detection.
   - *Key detector* — note names → most likely key.
   - *Audio transcription* — hum, whistle, or record a line; `Score.from_wav`
     (YIN pitch tracking) turns it into LilyPond/ABC/MusicXML/tab + MIDI.
   - *MIDI converter* — `.mid` → LilyPond, ABC, MusicXML, or tab, with
-    automatic key detection and PDF engraving via LilyPond.
+    automatic key detection, a Roman-numeral chord timeline of the file
+    (pytheory 0.57's `analyze song.mid`), and PDF engraving via LilyPond.
 
 Playback everywhere honors a global **sound** picker backed by pytheory's
 synth presets (piano, theremin, koto, choir, …).
@@ -85,15 +102,18 @@ Everything the UI does is a plain JSON/WAV/PDF endpoint:
 | `GET /api/key/explore?after=F` | Borrowed chords, secondary dominants, suggestions |
 | `GET /api/key/modulate?to_tonic=Eb` | Modulation path + pivot chords |
 | `GET /api/circle` | Circle of fifths with signatures + relatives |
+| `GET /api/ragas?tradition=carnatic` | All 54 ragas (thaat/melakarta, time, rasa) |
+| `GET /api/raga?name=Yaman&sa=D` (+`/audio`) | Aroha/avaroha, pakad, shruti table / sitar WAV |
+| `GET /api/maqams` | The ten maqamat with family + mood |
+| `GET /api/maqam?name=Rast&tonic=C` (+`/audio`) | Ajnas, seyir, quarter-tone table / WAV |
 | `GET /api/groove/audio?preset=funk&swing=0.15` (+`/midi`) | Drum groove WAV / MIDI |
 | `GET /api/song/sketch?vibe=jazz` | Editable song spec for a vibe |
 | `POST /api/song/audio` / `midi` / `notation` (song spec JSON) | Full arrangement |
 | `GET /api/progression` (+`/audio`, `/midi`) | Chords with tabs / WAV / MIDI |
 | `GET /api/tools/identify?frets=x,3,2,0,1,0` | Chord name from fingering |
 | `GET /api/tools/analyze` / `GET /api/tools/detect-key` | Numerals / key |
-| `POST /api/tools/midi-convert` (raw MIDI) | LilyPond, ABC, MusicXML, tab |
+| `POST /api/tools/midi-convert` (raw MIDI) | LilyPond, ABC, MusicXML, tab + chord timeline |
 | `POST /api/tools/audio-convert` (raw audio) | Transcribed score in all formats + MIDI |
-| `POST /api/tools/harmonize` (raw audio) | Melody + auto-chords arrangement, audio + notation |
 | `POST /api/tools/lilypond-pdf?sig=…` (server-generated LilyPond) | Engraved PDF |
 | `POST /api/tuner/start` / `stop` | pytheory's native tuner (SSE at `:8123/stream`) |
 | `POST /api/tools/tune?rate=&system=` (raw float32 PCM) | Pitch → note + cents, any system |
