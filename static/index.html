@@ -36,9 +36,7 @@
   </header>
   <div id="navbar">
     <nav id="tabs" aria-label="Playground panels">
-      <button data-panel="about" class="active">About</button>
-      <span class="nav-sep"></span>
-      <button data-panel="chords">Guitar Tab</button>
+      <button data-panel="chords" class="active">Guitar Tab</button>
       <button data-panel="tuner">Tuner</button>
       <button data-panel="metronome">Metronome</button>
       <span class="nav-sep"></span>
@@ -59,8 +57,8 @@
   </div>
 
   <main>
-    <!-- ============ About ============ -->
-    <section id="panel-about" class="panel active">
+    <!-- ============ About (off-nav; reachable from the footer and #about) ============ -->
+    <section id="panel-about" class="panel">
       <div class="prose">
         <p><a href="https://pytheory.org/">PyTheory</a> is <em>music theory for
         humans</em> — a Python library that models tones, scales, chords, keys, fretboards, and
@@ -121,7 +119,7 @@
     </section>
 
     <!-- ============ Chords ============ -->
-    <section id="panel-chords" class="panel">
+    <section id="panel-chords" class="panel active">
       <div class="controls">
         <label>Root
           <select id="chord-root"></select>
@@ -872,7 +870,9 @@ tuner.onmessage = (e) => {
 
   <footer>
     <p>Built with <a href="https://pytheory.org/">pytheory</a> +
-       <a href="https://responder.kennethreitz.org/">responder</a>.</p>
+       <a href="https://responder.kennethreitz.org/">responder</a>
+       &nbsp;&middot;&nbsp; <a href="#about" class="goto" data-panel="about">About this playground</a>
+       &nbsp;&middot;&nbsp; <a href="https://github.com/kennethreitz/pytheory-playground">Source</a></p>
   </footer>
 
   <script src="/static/app.js"></script>

@@ -2016,7 +2016,7 @@ const SHARE = {
 };
 
 function activePanel() {
-  return document.querySelector(".panel.active")?.id.replace("panel-", "") || "about";
+  return document.querySelector(".panel.active")?.id.replace("panel-", "") || "chords";
 }
 
 function updateShareUrl() {
