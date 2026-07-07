@@ -49,7 +49,7 @@ SOUNDS = [s for s in (
     "piano", "electric_piano", "organ", "harpsichord", "music_box",
     "acoustic_guitar", "electric_guitar", "violin", "cello", "flute",
     "trumpet", "marimba", "vibraphone", "synth_lead", "synth_pad",
-    "sitar", "koto", "theremin", "choir",
+    "sitar", "oud", "koto", "theremin", "choir",
 ) if s in SOUND_PRESETS]
 
 
@@ -1077,20 +1077,15 @@ async def maqam_view(req, resp):
 
 @api.route("/api/maqam/audio")
 async def maqam_audio(req, resp):
-    """Render the ascent and descent in quarter-tone just intonation.
-
-    pytheory 0.57's Maqam.render defaults to an "oud" voice that isn't in
-    the Synth bank yet, so we ask for pluck (Karplus-Strong) explicitly —
-    the closest built-in sound to a plucked oud.
-    """
+    """Render the ascent and descent in quarter-tone just intonation,
+    on the oud (Maqam.render's default voice since 0.57.13)."""
     name = req.params.get("name", "Rast")
     tonic = req.params.get("tonic", "C")
     try:
         maqam = Maqam.get(name)
     except KeyError:
         return error(resp, 404, f"Unknown maqam: {name}")
-    buf = await run_heavy(maqam.render, f"{tonic}3", synth="pluck",
-                          t=420, reverb=0.3)
+    buf = await run_heavy(maqam.render, f"{tonic}3", t=420, reverb=0.3)
     buf = np.clip(buf.astype(np.float32) / SAMPLE_PEAK, -1.0, 1.0)
     await send_buffer(resp, buf)
 
