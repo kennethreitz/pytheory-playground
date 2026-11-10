@@ -1,4 +1,4 @@
-.PHONY: run dev install
+.PHONY: run dev install test
 
 # Run the playground (http://127.0.0.1:5042 by default; override with PORT=…)
 run:
@@ -11,3 +11,7 @@ dev:
 # Sync dependencies from the lockfile
 install:
 	uv sync
+
+# Chord voicing contract (no third-party test runner)
+test:
+	uv run python -m unittest discover -s tests -v

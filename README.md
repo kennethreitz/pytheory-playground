@@ -24,15 +24,16 @@ $ docker run -p 5042:5042 pytheory-playground
 ## What's inside
 
 - **About** — what pytheory is and how to install it.
-- **Guitar Tab** — chord diagrams for six fretted instruments with named guitar
-  tunings (drop d, DADGAD, …), fully custom tunings, and capo support. Charted
-  chords keep their curated shapes; any other parseable symbol (`F#m7b5`,
-  `Gadd9`, `C7sus4`, …) gets a voicing computed from its notes (pytheory
-  0.55's neck search). The chord diagram is click-editable (pytheory names
-  whatever you finger and selects the matching chord), alternative voicings up
-  the neck load into the editor with a click, and an "on the neck" fretboard
-  maps any scale — or the chord's own tones — across 12 frets, every note
-  clickable and audible.
+- **Guitar Tab** — chord diagrams for six fretted instruments. Named guitar
+  tunings (standard, drop D, DADGAD, open G/D/E/A, half-step down, all
+  fourths), fully custom tunings, and a capo. pytheory 0.59 ranks the
+  playable grips (`Fretboard.chord(name, multiple=True)`, about eight, best
+  first). The top diagram is the same shape a single `Fretboard.chord(name)`
+  call returns, so the curated standard-tuning grips stay put. Click a grip
+  to load it, or click the diagram to edit it (pytheory names whatever you
+  finger). Symbols outside the charts (`F#m7b5`, `Gadd9`, `C7sus4`, …) are
+  voiced from their notes. An "on the neck" fretboard maps any scale — or
+  the chord's own tones — across 12 frets, every note clickable and audible.
 - **Tuner** — pytheory's native tuner: mic → YIN → note + signed cents at
   20 readings/sec over a Server-Sent Events stream, with needle and strobe
   displays that settle within ±5 cents. Chromatic or per-instrument (strings
@@ -93,7 +94,7 @@ Everything the UI does is a plain JSON/WAV/PDF endpoint:
 | Endpoint | What it returns |
 | --- | --- |
 | `GET /api/meta` | Instruments, tunings, systems, sounds, progressions |
-| `GET /api/chord?name=Cmaj7&instrument=guitar&tuning=drop d&capo=2` | Fingering, tab, tones |
+| `GET /api/chord?name=Cmaj7&instrument=guitar&tuning=drop d&capo=2` | Fingering, tab, tones, and ranked `voicings` (best first; the first matches the single shape). `limit` defaults to 8. |
 | `GET /api/chord/lab?name=G7` | Voicings, set theory, tension, substitutions |
 | `GET /api/chord/audio` / `GET /api/voicing/audio` / `GET /api/symbols/audio` | WAV |
 | `GET /api/scale?system=gamelan&tonic=ji&name=slendro` | Tones, harmonization |

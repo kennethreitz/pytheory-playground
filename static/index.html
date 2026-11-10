@@ -72,10 +72,11 @@
         re-implemented in JavaScript. Each card cites the API call behind it. Explore:</p>
         <ul>
           <li><a href="#chords" class="goto" data-panel="chords">Guitar Tab</a> — chord diagrams
-            for six fretted instruments, with custom tunings, capo, and a click-to-edit fretboard
-            that names whatever you finger. Charted chords keep their curated shapes; anything
-            else (<em>F&#9839;m7&#9837;5</em>, <em>Gadd9</em>, <em>C7sus4</em>&hellip;) gets a
-            voicing computed from its notes.</li>
+            for six fretted instruments. Pick a tuning (drop D, DADGAD, open G, &hellip;) and a
+            capo; pytheory ranks the playable grips and draws them best first. The top shape is
+            the one a single lookup returns, including the curated standard-tuning grips. Click
+            the diagram to edit it. Symbols outside the charts (<em>F&#9839;m7&#9837;5</em>,
+            <em>Gadd9</em>, <em>C7sus4</em>&hellip;) are voiced from their notes.</li>
           <li><a href="#lab" class="goto" data-panel="lab">Chord Lab</a> — voicings, inversions,
             tension, pitch-class set theory, and tritone substitutions for any chord symbol.</li>
           <li><a href="#scales" class="goto" data-panel="scales">Scales</a> — every scale and mode
@@ -162,10 +163,11 @@
                 Whatever you finger, pytheory names it and keeps everything else in sync.</p>
             </div>
           </div>
-          <div id="chord-alts-wrap">
-            <h4>More voicings <small>NamedChord.fingerings(…)</small></h4>
-            <div id="chord-alts" class="prog-row"></div>
-          </div>
+        </div>
+        <div class="card wide" id="chord-alts-wrap">
+          <h3>Voicings <small>Fretboard.chord(name, multiple=True)</small></h3>
+          <p class="hint" id="chord-setup"></p>
+          <div id="chord-alts" class="prog-row"></div>
         </div>
         <div class="card">
           <h3>ASCII tab <small>NamedChord.tab(fretboard=…)</small></h3>
