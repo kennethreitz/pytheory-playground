@@ -50,6 +50,30 @@ function fill(select, options, selected) {
   }
 }
 
+function fillLabeled(select, items, selected) {
+  select.innerHTML = "";
+  for (const item of items) {
+    const o = document.createElement("option");
+    o.value = item.value;
+    o.textContent = item.label;
+    if (item.value === selected) o.selected = true;
+    select.appendChild(o);
+  }
+}
+
+function tuningLabel(id) {
+  if (!id || id === "standard") return "standard";
+  if (id === "custom…") return "custom";
+  return (META && META.tuning_labels && META.tuning_labels[id]) || id;
+}
+
+function tuningItems(includeCustom) {
+  const ids = META.tunings || ["standard"];
+  const items = ids.map((id) => ({ value: id, label: tuningLabel(id) }));
+  if (includeCustom) items.push({ value: "custom…", label: "custom…" });
+  return items;
+}
+
 /* ---------- chord diagram (SVG) ---------- */
 
 function autoBase(positions, nFrets = 5) {
@@ -109,10 +133,18 @@ function chordDiagram(svg, positions, strings, opts = {}) {
         t.textContent = fretPos < 1 ? "↑" : "↓";
       }
     }
-    // string label
-    const lbl = el("text", { x, y: bottom + 16, "text-anchor": "middle", "font-size": 12, class: "diag-label" });
-    lbl.textContent = strings ? strings[i] : "";
+    if (opts.labels !== false) {
+      const lbl = el("text", { x, y: bottom + 16, "text-anchor": "middle", "font-size": 12, class: "diag-label" });
+      lbl.textContent = strings ? strings[i] : "";
+    }
   });
+  if (opts.caption) {
+    const cap = el("text", {
+      x: (left + right) / 2, y: 18, "text-anchor": "middle",
+      "font-size": 12, class: "diag-label",
+    });
+    cap.textContent = opts.caption;
+  }
 
   // invisible click targets for editing
   if (opts.onEdit) {
@@ -160,9 +192,13 @@ function chordTuning() {
 function syncTuningControls() {
   const isGuitar = $("chord-instrument").value === "guitar";
   // Named tunings are guitar-only; other instruments get standard/custom.
-  const options = isGuitar ? [...META.tunings, "custom…"] : ["standard", "custom…"];
+  const items = isGuitar ? tuningItems(true) : [
+    { value: "standard", label: "standard" },
+    { value: "custom…", label: "custom…" },
+  ];
   const current = $("chord-tuning").value;
-  fill($("chord-tuning"), options, options.includes(current) ? current : "standard");
+  const selected = items.some((item) => item.value === current) ? current : "standard";
+  fillLabeled($("chord-tuning"), items, selected);
   $("chord-tuning-custom-wrap").classList.toggle("hidden", $("chord-tuning").value !== "custom…");
 }
 
@@ -172,13 +208,28 @@ const chordState = {
   viewBase: 1,
   custom: false,       // true once the user has clicked the diagram
   voicingTones: [],    // exact pitches of a custom voicing, for playback
+  voicings: [],
+  openStrings: [],
+  grip: 0,             // index into voicings when the user picked a ranked grip
 };
+
+// Applied after the next refreshChord, so a shared link can land on grip N.
+let pendingGrip = null;
+
+function chordCaption() {
+  const id = $("chord-tuning").value;
+  const capo = parseInt($("chord-capo").value, 10) || 0;
+  if ((id === "standard" || !id) && !capo) return "";
+  const label = tuningLabel(id);
+  return capo ? `${label} · capo ${capo}` : label;
+}
 
 function renderChordDiagram() {
   $("fret-label").textContent = `${chordState.viewBase}fr`;
   chordDiagram($("chord-diagram"), chordState.positions, chordState.strings, {
     base: chordState.viewBase,
     onEdit: editChordPosition,
+    caption: chordCaption(),
   });
 }
 
@@ -243,7 +294,9 @@ async function refreshAlternatives(symbol) {
   if (!symbol) return;
   try {
     const c = await api(`/api/chord?name=${encodeURIComponent(symbol)}&instrument=${$("chord-instrument").value}${chordTuning()}`);
-    renderAlternatives(c.alternatives || []);
+    chordState.voicings = c.voicings || [];
+    chordState.openStrings = c.open_strings || chordState.openStrings;
+    renderVoicings();
     updateShareUrl();
   } catch { /* keep the previous row */ }
 }
@@ -254,8 +307,9 @@ async function refreshChord() {
   $("chord-error").textContent = "";
   try {
     const c = await api(`/api/chord?name=${encodeURIComponent(name)}&instrument=${instrument}${chordTuning()}`);
-    // Charted chords keep their curated shape; anything else gets a voicing
-    // computed from its notes (Fretboard.chord, pytheory 0.55+).
+    // The headline shape is Fretboard.chord(name): the curated grip in
+    // standard tuning, otherwise the best ranked grip for this tuning
+    // and capo. voicings is that same call with multiple=True.
     $("chord-title").innerHTML = c.computed
       ? `${c.name} <small class="custom-note">computed voicing</small>` : c.name;
     $("chord-tab").textContent = c.tab;
@@ -266,8 +320,18 @@ async function refreshChord() {
     chordState.viewBase = autoBase(c.positions);
     chordState.custom = false;
     chordState.voicingTones = [];
+    chordState.grip = 0;
+    chordState.voicings = c.voicings && c.voicings.length ? c.voicings : [{
+      positions: c.positions, strings: c.strings, tab: c.tab,
+    }];
+    chordState.openStrings = c.open_strings || [];
     renderChordDiagram();
-    renderAlternatives(c.alternatives || []);
+    renderVoicings();
+    if (pendingGrip > 0) {
+      const grip = pendingGrip;
+      pendingGrip = null;
+      selectGrip(grip);
+    }
     updateShareUrl();
     if ($("gscale-mode").value === "chord") refreshGuitarScale();
   } catch (e) {
@@ -362,29 +426,73 @@ async function refreshGuitarScale() {
   }
 }
 
-// alternative voicings as clickable mini diagrams
-function renderAlternatives(alts) {
+function sameShape(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((fret, i) => fret === b[i]);
+}
+
+function selectGrip(index) {
+  const voicing = (chordState.voicings || [])[index];
+  if (!voicing) return;
+  chordState.positions = [...voicing.positions];
+  chordState.strings = voicing.strings ? [...voicing.strings] : chordState.strings;
+  chordState.viewBase = autoBase(voicing.positions);
+  chordState.custom = false;
+  chordState.grip = index;
+  chordState.voicingTones = [];
+  if (voicing.tab) $("chord-tab").textContent = voicing.tab;
+  renderChordDiagram();
+  renderVoicings();
+  updateShareUrl();
+}
+
+// Ranked grips, best first. The first one is the headline shape.
+function renderVoicings() {
+  const voicings = chordState.voicings || [];
   const row = $("chord-alts");
-  $("chord-alts-wrap").classList.toggle("hidden", !alts.length);
+  const wrap = $("chord-alts-wrap");
+  if (wrap) wrap.classList.toggle("hidden", !voicings.length);
+  const setup = $("chord-setup");
+  if (setup) {
+    const capo = parseInt($("chord-capo").value, 10) || 0;
+    const bits = [tuningLabel($("chord-tuning").value), capo ? `capo ${capo}` : "no capo"];
+    if (chordState.openStrings.length && ($("chord-tuning").value !== "standard" || capo)) {
+      bits.push(`open ${chordState.openStrings.join(" ")}`);
+    }
+    bits.push("best grip first");
+    setup.textContent = `${bits.join(" · ")}. Click a diagram to load it above.`;
+    if (capo) setup.textContent += " Fret numbers are above the capo.";
+  }
+  if (!row) return;
   row.innerHTML = "";
-  for (const positions of alts) {
+  voicings.forEach((voicing, i) => {
+    const active = sameShape(voicing.positions, chordState.positions);
     const div = document.createElement("div");
-    div.className = "prog-chord alt-voicing";
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("width", 110);
-    svg.setAttribute("height", 135);
-    chordDiagram(svg, positions, chordState.strings, { width: 110, height: 135 });
-    div.appendChild(svg);
+    div.className = "prog-chord alt-voicing" + (active ? " active" : "");
     div.title = "Load this voicing into the editor";
-    div.addEventListener("click", () => {
-      chordState.positions = [...positions];
-      chordState.viewBase = autoBase(positions);
-      chordState.custom = true;
-      renderChordDiagram();
-      identifyCurrentVoicing();
+    div.setAttribute("role", "button");
+    div.tabIndex = 0;
+    div.setAttribute("aria-label", `Voicing ${i + 1}${active ? ", showing" : ""}`);
+    if (active) div.setAttribute("aria-pressed", "true");
+    const rank = document.createElement("div");
+    rank.className = "numeral";
+    rank.textContent = String(i + 1);
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("width", 120);
+    svg.setAttribute("height", 148);
+    chordDiagram(svg, voicing.positions, voicing.strings || chordState.strings, {
+      width: 120, height: 148, labels: false,
+    });
+    div.append(rank, svg);
+    div.addEventListener("click", () => selectGrip(i));
+    div.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        selectGrip(i);
+      }
     });
     row.appendChild(div);
-  }
+  });
 }
 
 /* ---------- scales panel ---------- */
@@ -1898,6 +2006,7 @@ const SHARE = {
       const capo = parseInt($("chord-capo").value, 10) || 0;
       if (capo) p.capo = capo;
       if (chordState.custom) p.frets = chordState.positions.map((x) => (x === null ? "x" : x)).join(",");
+      else if (chordState.grip) p.grip = chordState.grip;
       return p;
     },
     apply(p) {
@@ -1915,6 +2024,7 @@ const SHARE = {
         }
       }
       if (p.get("capo")) $("chord-capo").value = p.get("capo");
+      if (p.get("grip")) pendingGrip = parseInt(p.get("grip"), 10) || 0;
       if (p.get("frets")) {
         // restore a custom voicing after the chart loads
         setTimeout(() => {
@@ -2186,7 +2296,7 @@ async function boot() {
   $("lab-go").addEventListener("click", refreshLab);
   $("lab-symbol").addEventListener("keydown", (e) => { if (e.key === "Enter") refreshLab(); });
   fill($("tuner-instrument"), ["chromatic", ...META.instruments], "guitar");
-  fill($("tuner-tuning"), META.tunings, "standard");
+  fillLabeled($("tuner-tuning"), tuningItems(false), "standard");
   fill($("tuner-system"), Object.keys(META.systems), "western");
   ["tuner-instrument", "tuner-tuning"].forEach((id) =>
     $(id).addEventListener("change", refreshTunerStrings));

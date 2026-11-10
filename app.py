@@ -31,6 +31,7 @@ from pytheory import INSTRUMENTS as SOUND_PRESETS
 from pytheory import Pattern
 from pytheory._statics import TEMPERAMENTS
 from pytheory.play import SAMPLE_PEAK
+from pytheory.voicings import DEFAULT_VOICING_LIMIT
 
 SAMPLE_RATE = 44100
 
@@ -38,8 +39,9 @@ SAMPLE_RATE = 44100
 INSTRUMENTS = ["guitar", "twelve_string", "ukulele", "banjo", "mandolin", "bass"]
 
 ROOTS = ["A", "Bb", "B", "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab"]
-# Anything Chord.from_symbol can parse is voiceable since 0.55's computed
-# fingerings — charted shapes still win when a chart exists.
+# Anything Chord.from_symbol can parse is voiceable. In standard tuning the
+# single Fretboard.chord(name) grip stays the curated shape; multiple=True
+# (pytheory 0.59) ranks the other playable grips for this tuning and capo.
 QUALITIES = ["", "m", "5", "6", "7", "9", "11", "13", "dim", "dim7", "aug",
              "sus2", "sus4", "7sus2", "7sus4", "add9",
              "m6", "m7", "m9", "m7b5", "maj7", "maj9"]
@@ -156,10 +158,24 @@ def _parse_chord(symbol: str) -> Chord:
 def _ascii_tab(label: str, positions, string_names) -> str:
     """ASCII tab in the standard orientation (highest string on top),
     from low-string-first positions/names."""
-    rows = [f"{nm}|--{'x' if p is None else p}--"
-            for nm, p in zip(reversed(list(string_names)),
-                             reversed(list(positions)))]
-    return "\n".join([label] + rows)
+    pairs = list(zip(reversed(list(string_names)), reversed(list(positions))))
+    width = max((len(str(name)) for name, _ in pairs), default=1)
+    rows = [f"{name:>{width}}|--{'x' if fret is None else fret}--"
+            for name, fret in pairs]
+    return "\n".join([label, *rows])
+
+
+def _tuning_label(name: str) -> str:
+    """A display label for one of Fretboard.TUNINGS. The value stays the key."""
+    labels = {
+        "dadgad": "DADGAD",
+        "p4": "P4 (all fourths)",
+        "all fourths": "all fourths",
+        "half step down": "half-step down",
+    }
+    if name in labels:
+        return labels[name]
+    return " ".join(part.upper() if len(part) == 1 else part for part in name.split())
 
 
 def _sound(req):
@@ -261,6 +277,7 @@ async def meta(req, resp):
         "qualities": QUALITIES,
         "chords": list(CHARTS["western"].keys()),
         "tunings": list(Fretboard.TUNINGS.keys()),
+        "tuning_labels": {name: _tuning_label(name) for name in Fretboard.TUNINGS},
         "scales": SCALE_NAMES,
         "systems": SYSTEM_META,
         "sounds": SOUNDS,
@@ -307,107 +324,148 @@ def _fretboard_params(req) -> Fretboard:
     )
 
 
+class APIError(Exception):
+    """A request we can answer with a status code and a message."""
+
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+
+
+# pytheory ranks at most this many grips unless the caller asks for fewer.
+_MAX_VOICING_LIMIT = 16
+
+
+def _voicing_limit(raw) -> int:
+    if raw is None or raw == "":
+        return DEFAULT_VOICING_LIMIT
+    try:
+        limit = int(raw)
+    except (TypeError, ValueError) as e:
+        raise APIError(400, "limit must be a positive integer") from e
+    if limit < 1 or limit > _MAX_VOICING_LIMIT:
+        raise APIError(400, f"limit must be between 1 and {_MAX_VOICING_LIMIT}")
+    return limit
+
+
+def _canonical_tuning(tuning: str) -> str:
+    """The tuning name to report: a Fretboard.TUNINGS key, or the raw custom string."""
+    tuning = (tuning or "").strip()
+    if not tuning:
+        return "standard"
+    named = tuning.lower().replace("_", " ")
+    return named if named in Fretboard.TUNINGS else tuning
+
+
+def _display_strings(fretboard, fingering) -> list:
+    """Low-to-high labels for the diagram and the tab.
+
+    Standard tuning keeps the classic ``E A D G B e`` spelling. A tuning
+    or capo that repeats some other note (drop D's two Ds, DADGAD, a
+    capo'd F#) is spelled with the octave, so the nut stays readable.
+    """
+    from collections import Counter
+
+    tones = list(fretboard.tones)
+    repeated = [name for name, count in Counter(t.name for t in tones).items() if count > 1]
+    if repeated and repeated != ["E"]:
+        return [str(tone) for tone in tones]
+    return list(fingering.string_names)
+
+
+def _fingering_view(fingering, label: str, fretboard) -> dict:
+    positions = list(fingering.positions)  # low string first; None = muted
+    strings = _display_strings(fretboard, fingering)
+    return {
+        "positions": positions,
+        "strings": strings,
+        "tab": _ascii_tab(label, positions, strings),
+    }
+
+
+def _same_shape(a, b) -> bool:
+    return tuple(a.positions) == tuple(b.positions)
+
+
+def build_chord(name: str, instrument: str = "guitar", tuning: str = "",
+                capo: int = 0, limit=None) -> dict:
+    """One chord on a fretboard: the single best grip, plus the ranked set.
+
+    ``positions`` is ``Fretboard.chord(name)`` — the curated shape in
+    standard tuning, and the best ranked grip in any other tuning or
+    with a capo. ``voicings`` is ``Fretboard.chord(name, multiple=True)``,
+    best first, and its first entry is that same grip.
+    """
+    limit = _voicing_limit(limit)
+    try:
+        fretboard = _fretboard(instrument, tuning, capo)
+    except KeyError:
+        raise APIError(400, f"Unknown instrument: {instrument}") from None
+    except ValueError as e:
+        raise APIError(400, str(e)) from e
+    try:
+        chord = _parse_chord(name)
+    except Exception as e:
+        raise APIError(404, f"Couldn't parse chord '{name}': {e}") from e
+
+    named = CHARTS["western"].get(name)
+    try:
+        primary = fretboard.chord(name)
+    except Exception as e:
+        raise APIError(422, f"Couldn't voice {name} on {instrument}: {e}") from e
+    try:
+        ranked = fretboard.chord(name, multiple=True, limit=limit)
+    except Exception:
+        ranked = (primary,)
+    if not isinstance(ranked, tuple):
+        ranked = (ranked,)
+    shapes = list(ranked)
+    # The headline diagram stays the single-shape result even if a future
+    # ranking ever puts a different grip first.
+    if not shapes or not _same_shape(shapes[0], primary):
+        shapes = [primary, *[shape for shape in shapes if not _same_shape(shape, primary)]]
+    shapes = shapes[:limit]
+
+    label = name if named is not None else (getattr(chord, "symbol", None) or name)
+    voicings = [_fingering_view(shape, label, fretboard) for shape in shapes]
+    if named is not None:
+        tones = [t.name for t in named.acceptable_tones]
+    else:
+        tones = list(dict.fromkeys(t.name for t in chord.tones))
+    return {
+        "name": name,
+        "instrument": instrument,
+        "tuning": _canonical_tuning(tuning),
+        "capo": capo,
+        "open_strings": [str(tone) for tone in fretboard.tones],
+        "computed": named is None,
+        "tab": voicings[0]["tab"],
+        "positions": voicings[0]["positions"],
+        "strings": voicings[0]["strings"],
+        "tones": tones,
+        "pitches": [str(tone) for tone in chord.tones],
+        "formula": _chord_formula(chord),
+        "voicings": voicings,
+        # Other grips, best-to-rest. The headline shape is voicings[0].
+        "alternatives": [v["positions"] for v in voicings[1:]],
+    }
+
+
 @api.route("/api/chord")
 async def chord_view(req, resp):
     name = req.params.get("name", "C")
     instrument = req.params.get("instrument", "guitar")
     try:
-        fretboard = _fretboard_params(req)
-    except KeyError:
-        return error(resp, 400, f"Unknown instrument: {instrument}")
-    except ValueError as e:
-        return error(resp, 400, str(e))
+        capo = int(req.params.get("capo", "0") or 0)
+    except ValueError:
+        return error(resp, 400, "Capo must be a fret number from 0 to 12")
     try:
-        chord = _parse_chord(name)
-    except Exception as e:
-        return error(resp, 404, f"Couldn't parse chord '{name}': {e}")
-    named = CHARTS["western"].get(name)
-    computed = named is None
-    try:
-        if named is not None:
-            fingering = named.fingering(fretboard=fretboard)
-            tab = named.tab(fretboard=fretboard)
-            tones = [t.name for t in named.acceptable_tones]
-        else:
-            # Beyond the charts: a voicing computed from the chord's notes
-            # (0.55's neck search — any symbol from_symbol can parse).
-            fingering = fretboard.chord(name)
-            tones = list(dict.fromkeys(t.name for t in chord.tones))
-            tab = _ascii_tab(chord.symbol or name, fingering.positions,
-                             fingering.string_names)
-    except Exception as e:
-        return error(resp, 422, f"Couldn't voice {name} on {instrument}: {e}")
-    resp.media = {
-        "name": name,
-        "instrument": instrument,
-        "computed": computed,
-        "tab": tab,
-        "positions": list(fingering.positions),  # low string first; null = muted
-        "strings": list(fingering.string_names),
-        "tones": tones,
-        "pitches": [str(t) for t in chord.tones],
-        "formula": _chord_formula(chord),
-        "alternatives": [] if computed else
-                        _alt_fingerings(named, fretboard,
-                                        skip=tuple(fingering.positions)),
-    }
-
-
-def _alt_fingerings(named, fretboard, *, skip=None, count=5):
-    """A handful of playable voicings spread up the neck (low string first;
-    None = muted). Raw chart fingerings use -1 for muted strings."""
-    try:
-        raw = named.fingerings(fretboard=fretboard)  # tuples, high string first
-    except Exception:
-        return []
-
-    def norm(t):
-        return tuple(None if p is None or p < 0 else p for p in t)
-
-    def fretted(t):
-        return [p for p in t if p is not None and p > 0]
-
-    def sounding(t):
-        return [p for p in t if p is not None]
-
-    def span(t):
-        f = fretted(t)
-        return max(f) - min(f) if f else 0
-
-    def base(t):
-        f = fretted(t)
-        return min(f) if f else 0
-
-    def contiguous(t):
-        # mutes only at the edges — no dead strings in the middle of a strum
-        idx = [i for i, p in enumerate(t) if p is not None]
-        return bool(idx) and idx == list(range(idx[0], idx[-1] + 1))
-
-    def hand_fits(t):
-        f = fretted(t)
-        if not f:
-            return True
-        # 5-6 fretted strings only work as a barre (tight span)
-        if len(f) > 4 and span(t) > 2:
-            return False
-        # open strings don't mix with positions up the neck
-        if max(f) > 4 and any(p == 0 for p in t):
-            return False
-        return span(t) <= 3
-
-    playable = [t for t in (norm(r) for r in raw)
-                if len(sounding(t)) >= 4 and contiguous(t) and hand_fits(t)]
-    playable.sort(key=lambda t: (base(t), span(t), -len(sounding(t))))
-    out, seen_bases = [], set()
-    for t in playable:
-        low_first = tuple(reversed(t))
-        if low_first == skip or base(t) in seen_bases:
-            continue
-        seen_bases.add(base(t))
-        out.append(list(low_first))
-        if len(out) >= count:
-            break
-    return out
+        resp.media = build_chord(
+            name, instrument, req.params.get("tuning", ""), capo,
+            req.params.get("limit", ""),
+        )
+    except APIError as e:
+        return error(resp, e.status, e.message)
 
 
 @api.route("/api/chord/audio")

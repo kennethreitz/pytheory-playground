@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.14"
 
 [[package]]
@@ -456,16 +456,16 @@ wheels = [
 
 [[package]]
 name = "pytheory"
-version = "0.57.13"
+version = "0.59.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "rich" },
     { name = "scipy" },
     { name = "sounddevice" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f0/84/2539e8bb9ff29e4c211a6502d06ac35087ffaf5cfc25ddddb8e3ca036e5f/pytheory-0.57.13.tar.gz", hash = "sha256:2ab86a5bff01818f79c8e0d48e63e2695e5fed225a308b97552334c0084d141f", size = 368252, upload-time = "2026-07-07T17:30:35.491Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/25/43/91a6b37c29e0e2d0de0feb56d579788b118b6f8869d97eb0a59ba9cdc1fe/pytheory-0.59.0.tar.gz", hash = "sha256:246629311fbb557a78dfb13d03435c70d658f3ce25cf8dd17f69b7a3066c9c8d", size = 392936, upload-time = "2026-11-10T01:29:14.928Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ae/d9/fa29ed6e1d6e27b4197b37e00ec5515ac65f7f179e6974e5b9fdfb6ac3ac/pytheory-0.57.13-py3-none-any.whl", hash = "sha256:c3ae028d0788a7bdf380d6d8344454bc959ec99c84bb3e8b99c3ac8490c7cf41", size = 298536, upload-time = "2026-07-07T17:30:34.227Z" },
+    { url = "https://files.pythonhosted.org/packages/05/6e/8fed5b5a6fe52e2a32b6bd10124d0b9cec49dca38200df935fd5145c415a/pytheory-0.59.0-py3-none-any.whl", hash = "sha256:701ebadc4638dc05cb83d971a3272b2fd58d28ee8dfcd25215d9d444452eb269", size = 313593, upload-time = "2026-11-10T01:29:13.456Z" },
 ]
 
 [[package]]
@@ -479,7 +479,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "pytheory", specifier = ">=0.57.13" },
+    { name = "pytheory", specifier = ">=0.59.0" },
     { name = "responder", specifier = ">=5.0.0" },
 ]
 
