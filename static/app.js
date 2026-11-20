@@ -2140,6 +2140,129 @@ function updateShareUrl() {
   history.replaceState(null, "", hash);
 }
 
+/* ---------- Type Music (pytheory-studio's sketchpad) ---------- */
+
+const TYPE_DEFAULT = "C E7 Am | Dm7 G7 | C";
+const typeState = { last: null, ticket: 0, timer: null };
+const escHTML = (v) => String(v ?? "").replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const typeFnClass = (f) => {
+  const word = (f || "").split(" ")[0];
+  return ["tonic", "subdominant", "dominant"].includes(word) ? `fn-${word}` : "";
+};
+
+function typeChordTable(rows) {
+  return `<table class="type-chords">${rows.map((r) => `
+    <tr>
+      <td class="sym">${escHTML(r.symbol)}</td>
+      <td class="rn ${typeFnClass(r.function)}">${escHTML(r.roman)}</td>
+      <td><span class="type-fn">${escHTML(r.function)}</span><br>
+        <span class="tones">${r.tones.map((t) => `${escHTML(t.name)}&thinsp;<span class="hint">${escHTML(t.interval)}</span>`).join(" · ")}</span>
+        ${r.outside.length ? `<br><span class="custom-note">outside the key: ${escHTML(r.outside.join(", "))}</span>` : ""}
+      </td>
+    </tr>`).join("")}</table>`;
+}
+
+function showTypeAnalysis(a) {
+  let html = `<h3>Key <small>Key(tonic, mode)</small></h3>
+    <div class="type-key">${escHTML(a.key)}<small>${a.key_detected ? "detected" : "pinned"}</small></div>
+    <div class="tones">${a.key_notes.map(escHTML).join(" ")}</div>`;
+  if (a.chords) {
+    html += `<div class="type-numerals">${escHTML(a.numerals)}</div>
+      <h4>${a.kind === "chord" ? "Chord" : "Chords"} <small class="hint">chord.analyze(key, secondary_dominants=True)</small></h4>
+      ${typeChordTable(a.chords)}`;
+    if (a.cadences?.length) {
+      html += `<h4>Cadences <small class="hint">find_cadences</small></h4>${a.cadences.map((c) =>
+        `<div>${escHTML(c.kind)} <span class="hint">${escHTML(c.chords)}</span></div>`).join("")}`;
+    }
+  }
+  if (a.triads) {
+    html += `<h4>Steps</h4><div class="tones">${a.steps.map(escHTML).join(" · ")}</div>
+      <h4>Diatonic triads</h4><table class="type-chords">${a.triads.map((t) => `
+        <tr><td class="rn ${typeFnClass(t.function)}">${escHTML(t.roman)}</td>
+            <td class="sym">${escHTML(t.symbol)}</td>
+            <td><span class="type-fn">${escHTML(t.function)}</span></td></tr>`).join("")}</table>`;
+  }
+  if (a.notes) {
+    html += `<h4>Notes</h4><div class="note-row">${a.notes.map((n) =>
+        `<span class="note-pill${n.in_key ? "" : " tonic"}" title="${n.in_key ? "in the key" : "outside the key"}">${escHTML(n.name)}</span>`).join("")}</div>
+      <h4>Shape</h4><div>${escHTML(a.range || "")}, ${escHTML(a.ending)}</div>
+      <div class="hint">${a.intervals.map(escHTML).join(" · ")}</div>`;
+  }
+  $("type-analysis").innerHTML = html;
+}
+
+// LilyPond sizes its SVG in millimetres; draw it at a steady, readable scale
+// rather than stretching a two-bar sketch across the card.
+function sizeTypeScore() {
+  const svg = $("type-score").querySelector("svg");
+  if (!svg) return;
+  const mm = parseFloat(svg.getAttribute("width"));
+  svg.style.width = mm ? `${mm * 3.78 * 1.55}px` : "100%";
+}
+
+async function refreshType(force = false) {
+  const text = $("type-text").value.trim();
+  if (!text || (!force && text === typeState.last)) return;
+  typeState.last = text;
+  if (activePanel() === "type") updateShareUrl();
+  const ticket = ++typeState.ticket;
+  $("type-score").classList.add("busy");
+  try {
+    const r = await fetch("/api/type/render", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    const d = await r.json();
+    if (ticket !== typeState.ticket) return;   // a newer keystroke won
+    if (!r.ok) { $("type-error").textContent = d.error || r.statusText; return; }
+    $("type-error").textContent = "";
+    // The SVG is LilyPond's output for server-generated source, never visitor markup.
+    $("type-score").innerHTML = d.svg || `<p class="hint">${escHTML(d.engrave_error)}</p>`;
+    sizeTypeScore();
+    showTypeAnalysis(d.analysis);
+    $("type-ly").textContent = d.lilypond;
+  } catch (err) {
+    if (ticket === typeState.ticket) $("type-error").textContent = err.message;
+  } finally {
+    if (ticket === typeState.ticket) $("type-score").classList.remove("busy");
+  }
+}
+
+function initTypeMusic() {
+  const box = $("type-text");
+  if (!box.value.trim()) box.value = TYPE_DEFAULT;
+  box.addEventListener("input", () => {
+    clearTimeout(typeState.timer);
+    typeState.timer = setTimeout(refreshType, 400);
+  });
+  const play = () => playUrl(`/api/type/audio?text=${encodeURIComponent(box.value.trim())}${soundQ()}`, $("type-play"));
+  box.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); refreshType(true).then(play); }
+  });
+  $("type-play").addEventListener("click", play);
+  $("type-midi").addEventListener("click", () => {
+    location.href = `/api/type/midi?text=${encodeURIComponent(box.value.trim())}`;
+  });
+  $("type-copy").addEventListener("click", () => navigator.clipboard?.writeText($("type-ly").textContent));
+  $("type-examples").addEventListener("click", (e) => {
+    if (e.target.tagName !== "BUTTON") return;
+    box.value = e.target.textContent;
+    refreshType();
+    box.focus();
+  });
+}
+
+SHARE.type = {
+  collect() {
+    const text = $("type-text").value.trim();
+    return text && text !== TYPE_DEFAULT ? { text } : {};
+  },
+  apply(params) {
+    if (params.get("text")) $("type-text").value = params.get("text").slice(0, 400);
+  },
+};
+
 /* ---------- boot ---------- */
 
 async function boot() {
@@ -2194,6 +2317,7 @@ async function boot() {
   fill($("reharm-key"), META.roots, "C");
   $("reharm-key").addEventListener("change", refreshReharmonize);
   initMetronome();
+  initTypeMusic();
 
   // tab switching (with #hash deep links + shareable state params)
   const showPanel = (name) => {
@@ -2220,6 +2344,7 @@ async function boot() {
     lab: refreshLab,
     ragas: refreshRaga,
     maqamat: refreshMaqam,
+    type: () => refreshType(true),
   };
   const applyHashState = (refresh) => {
     let [panel, query] = location.hash.slice(1).split("?");
@@ -2489,6 +2614,7 @@ async function boot() {
   refreshKey();
   refreshRaga();
   refreshMaqam();
+  refreshType();
 }
 
 boot().catch((e) => {

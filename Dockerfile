@@ -1,6 +1,6 @@
 FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim
 
-# lilypond — PDF engraving; ffmpeg — audio-format conversion for Score.from_wav
+# lilypond — PDF + Type Music SVG engraving; ffmpeg — audio-format conversion for Score.from_wav
 # (afconvert is macOS-only). fonts-dejavu keeps lilypond's text rendering happy.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends lilypond ffmpeg fonts-dejavu-core \
@@ -13,6 +13,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project --no-dev
 
 COPY app.py main.py ./
+COPY typemusic ./typemusic
 COPY static ./static
 
 ENV HOST=0.0.0.0 \

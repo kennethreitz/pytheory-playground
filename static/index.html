@@ -48,6 +48,7 @@
       <button data-panel="maqamat">Maqamat</button>
       <span class="nav-sep"></span>
       <button data-panel="song">Songwriter</button>
+      <button data-panel="type">Type Music</button>
       <span class="nav-sep"></span>
       <button data-panel="tools">Tools</button>
       <label id="sound-wrap" title="Playback sound (pytheory synth presets)">&#9835;
@@ -570,6 +571,57 @@ tuner.onmessage = (e) => {
     </section>
 
     <!-- ============ Tools ============ -->
+    <!-- ============ Type Music (pytheory-studio's sketchpad) ============ -->
+    <section id="panel-type" class="panel">
+      <div class="card wide">
+        <h3>Type Music <small>parse → Chord.analyze · find_cadences · Score.to_lilypond()</small></h3>
+        <p class="hint">Type a progression, a scale, a chord, or a melody in plain text. pytheory
+          analyzes it and writes the LilyPond; LilyPond engraves it — live, as you type.</p>
+        <textarea id="type-text" class="type-text" rows="2" maxlength="400" spellcheck="false"
+          autocomplete="off" aria-label="Music to analyze" placeholder="C Am F G7"></textarea>
+        <div class="type-examples" id="type-examples">
+          <span class="hint">try</span>
+          <button>C E7 Am | Dm7 G7 | C</button>
+          <button>in G: ii V I</button>
+          <button>C E7 Am Bb</button>
+          <button>A minor: i iv V7 i</button>
+          <button>D dorian</button>
+          <button>Cmaj7</button>
+          <button>G4:e A4 B4 C5 D5:q B4 G4:h</button>
+        </div>
+        <p id="type-error" class="error"></p>
+      </div>
+      <div class="results">
+        <div class="card type-sheet-card">
+          <div id="type-score" class="type-score" aria-live="polite"></div>
+          <div class="controls type-controls">
+            <button id="type-play" class="play">&#9654; Play</button>
+            <button id="type-midi" class="secondary">&#8681; MIDI</button>
+            <button id="type-copy" class="secondary">Copy LilyPond</button>
+            <span class="hint type-credit">engraved by LilyPond</span>
+          </div>
+        </div>
+        <div class="card type-analysis" id="type-analysis"></div>
+        <details class="card wide">
+          <summary><h3>LilyPond source <small>Score.to_lilypond(chord_names=True)</small></h3></summary>
+          <pre id="type-ly"></pre>
+        </details>
+        <details class="card wide">
+          <summary><h3>How to type music</h3></summary>
+          <table class="kv type-help">
+            <tr><th><code>C Am F G7</code></th><td>chords, one per bar</td></tr>
+            <tr><th><code>C Am | Dm7 G7 | C</code></th><td>bars — chords in a bar share it (three = half, quarter, quarter)</td></tr>
+            <tr><th><code>in G: ii V I</code></th><td>roman numerals in a key you name (<code>Am:</code> works too)</td></tr>
+            <tr><th><code>D dorian</code></th><td>a scale, its steps, and its diatonic triads</td></tr>
+            <tr><th><code>Cmaj7</code></th><td>one chord, taken apart</td></tr>
+            <tr><th><code>G4:e A4 B4 C5:h</code></th><td>a melody — <code>w h q e s</code> lengths stick until changed, <code>.</code> dots, <code>r</code> rests</td></tr>
+          </table>
+          <p class="hint">Put <code>in &lt;key&gt;:</code> in front of anything to pin the key instead of detecting it.
+            From <a href="https://github.com/kennethreitz/pytheory" target="_blank" rel="noopener">PyTheory</a> Studio.</p>
+        </details>
+      </div>
+    </section>
+
     <section id="panel-tools" class="panel">
       <div class="card wide">
         <h3>Note inspector <small>Tone.solfege · .helmholtz · .overtones(…)</small></h3>

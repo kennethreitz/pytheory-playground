@@ -33,6 +33,8 @@ from pytheory._statics import TEMPERAMENTS
 from pytheory.play import SAMPLE_PEAK
 from pytheory.voicings import DEFAULT_VOICING_LIMIT
 
+import typemusic
+
 SAMPLE_RATE = 44100
 
 # Fretted instruments that make sense for chord charts.
@@ -1992,6 +1994,79 @@ async def lilypond_pdf(req, resp):
             resp.content = f.read()
     resp.headers["Content-Type"] = "application/pdf"
     resp.headers["Content-Disposition"] = "inline; filename=score.pdf"
+
+
+# --- Type Music ---------------------------------------------------------------
+# pytheory-studio's sketchpad: type a progression, scale, chord, or melody in
+# plain text; pytheory analyzes it and writes LilyPond, which is engraved to
+# SVG. Visitor text is parsed into pytheory objects first and never reaches
+# LilyPond itself (see typemusic/engrave.py).
+
+
+def _type_piece(text):
+    try:
+        return typemusic.parse_limited(text)
+    except typemusic.ParseError:
+        raise
+    except Exception as e:
+        raise typemusic.ParseError(f"pytheory couldn't make sense of that: {e}")
+
+
+def _type_render(text):
+    piece = _type_piece(text)
+    analysis = typemusic.analyze(piece)
+    ly = typemusic.to_lilypond(piece)
+    out = {"analysis": analysis, "report": typemusic.as_text(analysis), "lilypond": ly}
+    try:
+        out["svg"] = typemusic.engrave_svg(ly)
+    except typemusic.EngraveError as e:
+        out["svg"] = None
+        out["engrave_error"] = str(e)
+    return out
+
+
+@api.route("/api/type/render")
+async def type_render(req, resp):
+    if req.method.lower() == "post":
+        try:
+            data = await req.media()
+        except Exception:
+            return error(resp, 400, "POST JSON like {\"text\": \"C Am F G7\"}.")
+        text = data.get("text", "") if isinstance(data, dict) else ""
+    else:
+        text = req.params.get("text", "")
+    if not isinstance(text, str):
+        return error(resp, 400, "text must be a string")
+    try:
+        resp.media = await run_heavy(_type_render, text)
+    except typemusic.ParseError as e:
+        return error(resp, 400, str(e))
+
+
+@api.route("/api/type/audio")
+async def type_audio(req, resp):
+    try:
+        piece = _type_piece(req.params.get("text", ""))
+    except typemusic.ParseError as e:
+        return error(resp, 400, str(e))
+    score = typemusic.build_score(piece, notation=False, sound=_sound(req) or "piano")
+    await send_audio(resp, score)
+
+
+@api.route("/api/type/midi")
+async def type_midi(req, resp):
+    try:
+        piece = _type_piece(req.params.get("text", ""))
+    except typemusic.ParseError as e:
+        return error(resp, 400, str(e))
+    score = typemusic.build_score(piece, notation=False)
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "type-music.mid")
+        score.save_midi(path)
+        with open(path, "rb") as f:
+            resp.content = f.read()
+    resp.headers["Content-Type"] = "audio/midi"
+    resp.headers["Content-Disposition"] = "attachment; filename=type-music.mid"
 
 
 if __name__ == "__main__":

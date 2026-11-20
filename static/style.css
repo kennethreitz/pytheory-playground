@@ -525,3 +525,40 @@ table.matrix td {
   width: 1.9rem; height: 1.7rem; padding: 0; color: var(--ink);
 }
 table.matrix td.edge { color: var(--accent2); font-weight: 600; background: var(--code-bg); }
+
+/* ---------- Type Music ---------- */
+.type-text {
+  width: 100%; resize: vertical; min-height: 3.4rem; margin-top: 0.4rem;
+  font: 1.45rem/1.35 var(--mono); color: var(--ink);
+  background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+  padding: 0.6rem 0.8rem; outline: none;
+}
+.type-text:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255, 123, 114, 0.12); }
+.type-examples { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-top: 0.7rem; }
+.type-examples button {
+  font: 0.78rem var(--mono); color: var(--muted); background: none; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 999px; padding: 0.2rem 0.7rem;
+}
+.type-examples button:hover { color: var(--ink); border-color: var(--muted); }
+#type-error { margin: 0.7rem 0 0; }
+.type-sheet-card { flex: 1.6 1 520px; align-self: flex-start; }
+.type-analysis { flex: 1 1 300px; }
+.type-score {
+  color: var(--ink); min-height: 150px; display: flex; align-items: center;
+  justify-content: center; transition: opacity 0.15s; overflow-x: auto;
+}
+.type-score.busy { opacity: 0.45; }
+.type-score svg { max-width: 100%; height: auto; }
+.type-controls { margin: 1rem 0 0; padding-top: 0.8rem; border-top: 1px solid var(--line); }
+.type-credit { margin-left: auto; }
+.type-key { font-size: 2rem; line-height: 1.1; }
+.type-key small { font-size: 0.85rem; color: var(--faint); font-style: italic; margin-left: 0.5rem; }
+.type-numerals { font-size: 1.35rem; margin: 0.9rem 0 0.2rem; letter-spacing: 0.02em; }
+.type-chords { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+.type-chords td { padding: 0.45rem 0.6rem 0.45rem 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.type-chords td.sym { font-family: var(--mono); font-weight: 600; white-space: nowrap; }
+.type-chords td.rn { font-size: 1.1rem; white-space: nowrap; }
+.type-fn { font-size: 0.82rem; white-space: nowrap; color: var(--muted); }
+.type-help th { text-align: left; font-weight: 400; padding-right: 1rem; white-space: nowrap; }
+/* LilyPond measured its text in a Century-style serif; keep the browser close. */
+.type-score svg text { font-family: "C059", "Century Schoolbook", "New Century Schoolbook", Georgia, serif; }
